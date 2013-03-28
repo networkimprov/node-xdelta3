@@ -17,7 +17,6 @@ return a writable stream
 
 # USAGE
 
-
 ``` js
 var aDelta = xdelta3.diff(src, dst);
 aDelta.on('data', function(bufferChunk) {
@@ -35,3 +34,16 @@ for (var N = 0; N < aDiffBufferChunks.length; N++)
   aPatch.write(aDiffBufferChunks[i]);
 aPatch.end();
 ```
+
+# DEPENDENCIES
+
+This binding requires the existence of libxdelta3.a in a shared library path:
+
+* download the sources for a stable release - [3.0.6 here ](ttps://code.google.com/p/xdelta/source/browse/trunk/xdelta3/releases/xdelta3-3.0.6.tar.gz)
+* build the command line interface
+* create the library from the existing objects:
+```
+ar cr libxdelta3.a xdelta-xdelta3.o
+```
+* move the library to a shared lib path (ex /usr/local/lib)
+
