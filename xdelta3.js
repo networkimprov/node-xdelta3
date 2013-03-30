@@ -4,15 +4,14 @@ var xdelta = require('./build/Release/node_xdelta3.node');
 function diff(src, dst) {
   var aStream = new Stream;
   aStream.readable = true;
-
-  //TODO: call C++ method which will emit chunks as diff gets to a certain size
-  xdelta.diff_chunked();
-
-  setTimeout(function (){
-    aStream.emit('data', new Buffer('not yet developed'));
-    aStream.emit('end');
-  }, 1000);
-
+  xdelta.diff_chunked( src, dst,
+    function (buf) {
+      aStream.emit('data', buf);
+    },
+    function () {
+      aStream.emit('end');
+    }
+  );
   return aStream;
 }
 
