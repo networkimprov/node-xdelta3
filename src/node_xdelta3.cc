@@ -1,27 +1,40 @@
 #include <node.h>
+
 #include <v8.h>
 
 #include "../include/xdelta3/xdelta3.h"
 
+#define DEFAULT_CHUNK_SIZE 16384
+
 using namespace v8;
 
 struct DiffChunked_data {
-  DiffChunked_data(int s, int d, Handle<Function> cbData, Handle<Function> cbEnd) : src(s), dst(d), callbackData(cbData), callbackEnd(cbEnd), done(false) {}
+  DiffChunked_data(int s, int d, Handle<Function> cbData, Handle<Function> cbEnd) : src(s), dst(d), callbackData(cbData), callbackEnd(cbEnd), errCode(0) {}
   int src, dst;
   Persistent<Function> callbackData, callbackEnd;
-  bool done;
+  int bytesRead;
+  int errCode;
 };
 
 void DiffChunked_pool(uv_work_t* req) {
   DiffChunked_data* aData = (DiffChunked_data*) req->data;
-  aData->done = true;
+
+  char tmp[DEFAULT_CHUNK_SIZE];
+
+  uv_fs_t uvReq;
+  aData->bytesRead = uv_fs_read(uv_default_loop(), &uvReq, aData->src, tmp, DEFAULT_CHUNK_SIZE, 0, NULL);
+  if (aData->bytesRead < 0) {
+    aData->errCode = uv_last_error(uv_default_loop()).code;             
+  }
+
+  aData->bytesRead = 0;
 }
 
 void DiffChunked_done(uv_work_t* req, int ) {
   HandleScope scope;
   DiffChunked_data* aData = (DiffChunked_data*) req->data;
   
-  if (aData->done) {
+  if (aData->bytesRead == 0) {
     //emit the end
     TryCatch try_catch;
     aData->callbackEnd->Call(Context::GetCurrent()->Global(), 0, NULL);
@@ -31,12 +44,14 @@ void DiffChunked_done(uv_work_t* req, int ) {
     aData->callbackEnd.Dispose();
     delete req;  
     delete aData;
-  } else {
-    //emit the buffer chunk
+  } else if (aData->bytesRead > 0){
+    //TODO: emit the buffer chunk
     //keep on working
     uv_queue_work(uv_default_loop(), req, DiffChunked_pool, DiffChunked_done);
+  } else {
+    //TODO: error handling
+    //UVException(code, #func, "", path);
   }
-
 }
 
 Handle<Value> DiffChunked(const Arguments& args) {
