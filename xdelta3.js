@@ -8,8 +8,11 @@ function diff(src, dst) {
     function (buf) {
       aStream.emit('data', buf);
     },
-    function () {
-      aStream.emit('end');
+    function (err) {
+      if (typeof(err) == 'undefined')
+        aStream.emit('end');
+      else
+        aStream.emit('error');
     }
   );
   return aStream;

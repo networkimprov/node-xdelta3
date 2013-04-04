@@ -6,6 +6,8 @@ extern "C" {
 #include <node_buffer.h>
 #include <v8.h>
 
+#include <string>
+
 #define DEFAULT_CHUNK_SIZE 16384
 #define BLOCK_SIZE_XDELTA3 XD3_ALLOCSIZE
 
@@ -13,7 +15,7 @@ using namespace v8;
 
 struct DiffChunked_data {
   DiffChunked_data(int s, int d, Handle<Function> cbData, Handle<Function> cbEnd) : src(s), dst(d), callbackData(cbData), callbackEnd(cbEnd), 
-      firstTime(true), finishedProcessing(false), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(0), errCode(0) {
+      firstTime(true), finishedProcessing(false), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(0) {
     memset (&stream, 0, sizeof (stream));
     memset (&source, 0, sizeof (source));
     config.winsize = BLOCK_SIZE_XDELTA3;
@@ -41,7 +43,8 @@ struct DiffChunked_data {
   int readDstN;
 
   int errType; // 0 - none, -1 - libuv, -2 - xdelta3
-  int errCode;
+  uv_err_t uvErr;
+  std::string xdeltaErr;
 
   struct stat statbuf;
   void* inputBuf;
@@ -63,7 +66,7 @@ void DiffChunked_pool(uv_work_t* req) {
     aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->src, (void*)aData->source.curblk, aData->source.blksize, 0, NULL);
     if (aBytesRead < 0) {
       aData->errType = -1;
-      aData->errCode = uv_last_error(uv_default_loop()).code;
+      aData->uvErr = uv_last_error(uv_default_loop());
       return;
     }
     aData->source.onblk = aBytesRead;
@@ -97,7 +100,7 @@ void DiffChunked_pool(uv_work_t* req) {
       aData->readDstN++;
       if (aInputBufRead < 0) {
         aData->errType = -1;
-        aData->errCode = uv_last_error(uv_default_loop()).code;
+        aData->uvErr = uv_last_error(uv_default_loop());
         return;
       }
       if (aInputBufRead < (int) BLOCK_SIZE_XDELTA3)
@@ -137,7 +140,7 @@ void DiffChunked_pool(uv_work_t* req) {
       aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->src, (void*) aData->source.curblk, aData->source.blksize, aData->source.blksize * aData->source.getblkno, NULL);
       if (aBytesRead < 0) {
         aData->errType = -1;
-        aData->errCode = uv_last_error(uv_default_loop()).code;
+        aData->uvErr = uv_last_error(uv_default_loop());
         return;
       }
       aData->source.onblk = aBytesRead;
@@ -150,7 +153,9 @@ void DiffChunked_pool(uv_work_t* req) {
       goto process;
     default:
       aData->errType = -2;
-      //TODO: error handling
+      aData->xdeltaErr = aData->stream.msg;
+      xd3_close_stream(&aData->stream);
+      xd3_free_stream(&aData->stream);
       return;
     }
 
@@ -167,15 +172,18 @@ void DiffChunked_done(uv_work_t* req, int ) {
   HandleScope scope;
   DiffChunked_data* aData = (DiffChunked_data*) req->data;
   
-  if (aData->errType != 0) {
-    //TODO: error handling
-    //UVException(code, #func, "", path);
-    return;
-  }
-  if (aData->finishedProcessing && aData->diffBuffSize == 0) {
-    //emit the end
+  if (aData->errType != 0 || (aData->finishedProcessing && aData->diffBuffSize == 0)) {
     TryCatch try_catch;
-    aData->callbackEnd->Call(Context::GetCurrent()->Global(), 0, NULL);
+
+    if (aData->errType != 0) {
+      Local<Value> argv[1];
+      if (aData->errType == 1)
+        argv[0] = String::New(uv_strerror(aData->uvErr));
+      else
+        argv[0] = String::New(aData->xdeltaErr.c_str());
+      aData->callbackEnd->Call(Context::GetCurrent()->Global(), 1, argv);
+    } else
+      aData->callbackEnd->Call(Context::GetCurrent()->Global(), 0, NULL);
     if (try_catch.HasCaught())
       node::FatalException(try_catch);
     delete req;
