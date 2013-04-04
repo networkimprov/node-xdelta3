@@ -12,7 +12,7 @@ function diff(src, dst) {
       if (typeof(err) == 'undefined')
         aStream.emit('end');
       else
-        aStream.emit('error');
+        aStream.emit('error', err);
     }
   );
   return aStream;

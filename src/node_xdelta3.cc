@@ -177,7 +177,7 @@ void DiffChunked_done(uv_work_t* req, int ) {
 
     if (aData->errType != 0) {
       Local<Value> argv[1];
-      if (aData->errType == 1)
+      if (aData->errType == -1)
         argv[0] = String::New(uv_strerror(aData->uvErr));
       else
         argv[0] = String::New(aData->xdeltaErr.c_str());
