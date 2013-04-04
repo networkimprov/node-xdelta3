@@ -1,10 +1,10 @@
-#include <node.h>
-#include <node_buffer.h>
-#include <v8.h>
-
 extern "C" {
   #include "../include/xdelta3/xdelta3.h"
 }
+
+#include <node.h>
+#include <node_buffer.h>
+#include <v8.h>
 
 #define DEFAULT_CHUNK_SIZE 16384
 #define BLOCK_SIZE_XDELTA3 XD3_ALLOCSIZE
@@ -12,8 +12,8 @@ extern "C" {
 using namespace v8;
 
 struct DiffChunked_data {
-  DiffChunked_data(int s, int d, Handle<Function> cbData, Handle<Function> cbEnd) : src(s), dst(d), callbackData(cbData), callbackEnd(cbEnd), diffBuffSize(0),
-      wroteFromStream(0), readDstN(0), errType(0), errCode(0), firstTime(true) {
+  DiffChunked_data(int s, int d, Handle<Function> cbData, Handle<Function> cbEnd) : src(s), dst(d), callbackData(cbData), callbackEnd(cbEnd), 
+      firstTime(true), finishedProcessing(false), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(0), errCode(0) {
     memset (&stream, 0, sizeof (stream));
     memset (&source, 0, sizeof (source));
     config.winsize = BLOCK_SIZE_XDELTA3;
@@ -30,12 +30,14 @@ struct DiffChunked_data {
     callbackEnd.Dispose();
   };
 
-  bool firstTime;
   int src, dst;
   Persistent<Function> callbackData, callbackEnd;
-  int diffBuffSize;
+
+  bool firstTime;
+  bool finishedProcessing;
   char* diffBuff;
-  int wroteFromStream;
+  int diffBuffSize;
+  unsigned wroteFromStream;
   int readDstN;
 
   int errType; // 0 - none, -1 - libuv, -2 - xdelta3
@@ -50,17 +52,15 @@ struct DiffChunked_data {
 
 void DiffChunked_pool(uv_work_t* req) {
   DiffChunked_data* aData = (DiffChunked_data*) req->data;
-
   aData->diffBuffSize = 0;
 
   if (aData->firstTime) {
-    aData->firstTime = false;
     xd3_init_config(&aData->config, XD3_ADLER32);
     xd3_config_stream(&aData->stream, &aData->config);
 
-    uv_fs_t uvReq;
+    uv_fs_t aUvReq;
     int aBytesRead;
-    aBytesRead = uv_fs_read(uv_default_loop(), &uvReq, aData->src, (void*)aData->source.curblk, aData->source.blksize, 0, NULL);
+    aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->src, (void*)aData->source.curblk, aData->source.blksize, 0, NULL);
     if (aBytesRead < 0) {
       aData->errType = -1;
       aData->errCode = uv_last_error(uv_default_loop()).code;
@@ -72,32 +72,45 @@ void DiffChunked_pool(uv_work_t* req) {
     xd3_set_source(&aData->stream, &aData->source);
   }
 
-  //TODO: write the rest of aData->stream.avail_out to diffBuff
-  if (aData->wroteFromStream < aData->stream.avail_out)
-    xd3_consume_output(&aData->stream);
+  if (aData->wroteFromStream < aData->stream.avail_out) { //if there is something left in the out stream to emit
+    int aWriteSize = (aData->stream.avail_out - aData->wroteFromStream > DEFAULT_CHUNK_SIZE) ? DEFAULT_CHUNK_SIZE : aData->stream.avail_out - aData->wroteFromStream;
+    memcpy(aData->diffBuff, aData->stream.next_out + aData->wroteFromStream, aWriteSize);
+    aData->diffBuffSize += aWriteSize;
+    aData->wroteFromStream += aWriteSize;
+    if (aData->wroteFromStream < aData->stream.avail_out)
+      return;
+    else
+      xd3_consume_output(&aData->stream);
+  }
 
-  int aInputBufRead;
-  bool aRead = aData->firstTime; //if it is not firstTime we are coming from a XD3_OUTPUT
+  if (aData->finishedProcessing)
+    return;
+
+  int aInputBufRead = 0;
+  bool aRead = aData->firstTime; //if it is not firstTime, XD3_OUTPUT was called last, so read is not necessary
+  aData->firstTime = false;
   do {
     if (aRead) {
       aRead = false;
-      uv_fs_t uvReq;
-      aInputBufRead = uv_fs_read(uv_default_loop(), &uvReq, aData->dst, aData->inputBuf, BLOCK_SIZE_XDELTA3, aData->readDstN * BLOCK_SIZE_XDELTA3, NULL);
+      uv_fs_t aUvReq;
+      aInputBufRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->dst, aData->inputBuf, BLOCK_SIZE_XDELTA3, aData->readDstN * BLOCK_SIZE_XDELTA3, NULL);
       aData->readDstN++;
       if (aInputBufRead < 0) {
         aData->errType = -1;
         aData->errCode = uv_last_error(uv_default_loop()).code;
         return;
       }
-      if (aInputBufRead < BLOCK_SIZE_XDELTA3)
+      if (aInputBufRead < (int) BLOCK_SIZE_XDELTA3)
       {
         xd3_set_flags(&aData->stream, XD3_FLUSH | aData->stream.flags);
       }
       xd3_avail_input(&aData->stream, (const uint8_t*) aData->inputBuf, aInputBufRead);
     }
 
-    int ret = xd3_encode_input(&aData->stream);
-    switch (ret)
+    process:
+
+    int aRet = xd3_encode_input(&aData->stream);
+    switch (aRet)
     {
     case XD3_INPUT:
       aRead = true;
@@ -105,23 +118,23 @@ void DiffChunked_pool(uv_work_t* req) {
 
     case XD3_OUTPUT:
     {
-      int aWriteSize = (aData->stream.avail_out > DEFAULT_CHUNK_SIZE - aData->diffBuffSize) ? DEFAULT_CHUNK_SIZE - aData->diffBuffSize : aData->stream.avail_out;
+      int aWriteSize = ((int)aData->stream.avail_out > DEFAULT_CHUNK_SIZE - aData->diffBuffSize) ? DEFAULT_CHUNK_SIZE - aData->diffBuffSize : aData->stream.avail_out;
       memcpy(aData->diffBuff + aData->diffBuffSize, aData->stream.next_out, aWriteSize);
       aData->diffBuffSize += aWriteSize;
       aData->wroteFromStream = aWriteSize;
 
-      if (aData->wroteFromStream < aData->stream.avail_out) { //diff buffer is full
+      if (aData->wroteFromStream < aData->stream.avail_out) //diff buffer is full
         return;
-      } else
+      else
         xd3_consume_output(&aData->stream);
 
-      continue;
+      goto process;
     }
     case XD3_GETSRCBLK:
     {
-      uv_fs_t uvReq;
+      uv_fs_t aUvReq;
       int aBytesRead;
-      aBytesRead = uv_fs_read(uv_default_loop(), &uvReq, aData->src, (void*) aData->source.curblk, aData->source.blksize, aData->source.blksize * aData->source.getblkno, NULL);
+      aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->src, (void*) aData->source.curblk, aData->source.blksize, aData->source.blksize * aData->source.getblkno, NULL);
       if (aBytesRead < 0) {
         aData->errType = -1;
         aData->errCode = uv_last_error(uv_default_loop()).code;
@@ -129,20 +142,25 @@ void DiffChunked_pool(uv_work_t* req) {
       }
       aData->source.onblk = aBytesRead;
       aData->source.curblkno = aData->source.getblkno;
-      continue;  
+      goto process;  
     }
     case XD3_GOTHEADER:
     case XD3_WINSTART:
     case XD3_WINFINISH:
-      continue;
+      goto process;
     default:
       aData->errType = -2;
       //TODO: error handling
       return;
     }
 
-
   } while (aInputBufRead == BLOCK_SIZE_XDELTA3);
+
+  xd3_close_stream(&aData->stream);
+  xd3_free_stream(&aData->stream);
+
+  aData->finishedProcessing = true;
+
 }
 
 void DiffChunked_done(uv_work_t* req, int ) {
@@ -152,7 +170,9 @@ void DiffChunked_done(uv_work_t* req, int ) {
   if (aData->errType != 0) {
     //TODO: error handling
     //UVException(code, #func, "", path);
-  } else if (aData->diffBuffSize == 0) {
+    return;
+  }
+  if (aData->finishedProcessing && aData->diffBuffSize == 0) {
     //emit the end
     TryCatch try_catch;
     aData->callbackEnd->Call(Context::GetCurrent()->Global(), 0, NULL);
