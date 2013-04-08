@@ -6,9 +6,16 @@ module.exports = {
 var Stream = require('stream');
 var xdelta = require('./build/Release/node_xdelta3.node');
 
+
+function DiffStream(diffObj) { this.diffObj = diffObj; }
+DiffStream.prototype = new Stream.Readable();
+DiffStream.prototype._read = function(size) {
+  /*TODO: pause and resume diff_chunked using diffObj*/
+};
+
 function diff(src, dst) {
-  var aStream = new Stream.Readable();
-  aStream._read = function(size) { /*TODO: pause and resume diff_chunked*/};
+  var aDiffObj = {};
+  var aStream = new DiffStream(aDiffObj);
   xdelta.diff_chunked( src, dst,
     function (buf) {
       aStream.push(buf);
@@ -23,13 +30,14 @@ function diff(src, dst) {
   return aStream;
 }
 
-function patch(src, dst, callback) {
-  var aWritableStream = new Stream.Writable();
-
-  aWritableStream._write = function (chunk, encoding, callback) {
+function PatchStream(patchObj) { this.patchObj = patchObj; }
+PatchStream.prototype = new Stream.Writable();
+PatchStream.prototype._write = function (chunk, encoding, callback) {
     //TODO: call C++ method which processes a diff chunk
-    console.log('patch buf: ' + buf.toString());
   }
 
+function patch(src, dst) {
+  var aPatchObj = {};
+  var aWritableStream = PatchStream(aPatchObj);
   return aWritableStream;
 }
