@@ -13,9 +13,21 @@ extern "C" {
 
 using namespace v8;
 
+void init(Handle<Object> exports);
+
+NODE_MODULE(node_xdelta3, init);
+
+Handle<Value> DiffChunked(const Arguments& args);
+
+void init(Handle<Object> exports) {
+  exports->Set(String::NewSymbol("diff_chunked"), FunctionTemplate::New(DiffChunked)->GetFunction());
+}
+
 struct DiffChunked_data {
-  DiffChunked_data(int s, int d, Handle<Function> cbData, Handle<Function> cbEnd) : src(s), dst(d), callbackData(cbData), callbackEnd(cbEnd), 
+  DiffChunked_data(int s, int d, Local<Function> cbData, Local<Function> cbEnd) : src(s), dst(d), 
       firstTime(true), finishedProcessing(false), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(0) {
+    callbackData = Persistent<Function>::New(cbData);
+    callbackEnd = Persistent<Function>::New(cbEnd);
     memset (&stream, 0, sizeof (stream));
     memset (&source, 0, sizeof (source));
     config.winsize = BLOCK_SIZE_XDELTA3;
@@ -52,6 +64,26 @@ struct DiffChunked_data {
   xd3_config config;
   xd3_source source;
 };
+
+void DiffChunked_pool(uv_work_t* req);
+void DiffChunked_done(uv_work_t* req, int );
+
+Handle<Value> DiffChunked(const Arguments& args) {
+  HandleScope scope;
+
+  if (args.Length() < 4 || !args[0]->IsInt32() || !args[1]->IsInt32() || !args[2]->IsFunction() || !args[3]->IsFunction()) {
+    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd, function, function)")));
+  }
+
+  DiffChunked_data* aData;
+  aData = new DiffChunked_data(args[0]->Uint32Value(), args[1]->Uint32Value(), Local<Function>::Cast(args[2]), Local<Function>::Cast(args[3]));
+  uv_work_t* aReq = new uv_work_t();
+  aReq->data = aData;
+
+  uv_queue_work(uv_default_loop(), aReq, DiffChunked_pool, DiffChunked_done);
+  
+  return scope.Close(String::New("not developed"));
+}
 
 void DiffChunked_pool(uv_work_t* req) {
   DiffChunked_data* aData = (DiffChunked_data*) req->data;
@@ -208,26 +240,7 @@ void DiffChunked_done(uv_work_t* req, int ) {
   }
 }
 
-Handle<Value> DiffChunked(const Arguments& args) {
-  HandleScope scope;
 
-  if (args.Length() < 4 || !args[0]->IsInt32() || !args[1]->IsInt32() || !args[2]->IsFunction() || !args[3]->IsFunction()) {
-    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd, function, function)")));
-  }
 
-  DiffChunked_data* aData;
-  aData = new DiffChunked_data(args[0]->Uint32Value(), args[1]->Uint32Value(), Persistent<Function>::New(Local<Function>::Cast(args[2])), Persistent<Function>::New(Local<Function>::Cast(args[3])));
-  uv_work_t* aReq = new uv_work_t();
-  aReq->data = aData;
 
-  uv_queue_work(uv_default_loop(), aReq, DiffChunked_pool, DiffChunked_done);
-  
-  return scope.Close(String::New("not developed"));
-}
-
-void init(Handle<Object> exports) {
-  exports->Set(String::NewSymbol("diff_chunked"), FunctionTemplate::New(DiffChunked)->GetFunction());
-}
-
-NODE_MODULE(node_xdelta3, init)
 

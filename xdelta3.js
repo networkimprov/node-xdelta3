@@ -1,3 +1,8 @@
+module.exports = {
+  diff: diff,
+  patch: patch
+};
+
 var Stream = require('stream');
 var xdelta = require('./build/Release/node_xdelta3.node');
 
@@ -28,8 +33,3 @@ function patch(src, dst, callback) {
 
   return aWritableStream;
 }
-
-module.exports = {
-  diff: diff,
-  patch: patch
-};
