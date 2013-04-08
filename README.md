@@ -9,10 +9,9 @@ src - original file
 dst - file to generate diff with  
 returns a readable stream  
 
-**xdelta3.patch(fd src, fd dest, callback);**  
+**xdelta3.patchFile(fd src, fd dest);**  
 src - original file  
-dest - file generated from diff  
-callback - it is called with err as a parameter once the output has been generated  
+dest - file generated from diff
 return a writable stream  
 
 # USAGE
@@ -29,10 +28,17 @@ aDelta.on('error', function(err) {
   console.log('error: ' + err);
 });
 
-var aPatch = xdelta3.patch(src, dst, function(err){ console.log('done'); });
+var aPatch = xdelta3.patchFile(src, dst, function(err){ console.log('done'); });
 for (var N = 0; N < aDiffBufferChunks.length; N++)
   aPatch.write(aDiffBufferChunks[i]);
 aPatch.end();
+aPatch.on('error', function(err) {
+  console.log('error: ' + err);
+});
+aPatch.on('finish', function() {
+  console.log('patch finished');
+});
+
 ```
 
 # DEPENDENCIES

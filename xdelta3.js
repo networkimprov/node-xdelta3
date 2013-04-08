@@ -36,7 +36,7 @@ PatchStream.prototype._write = function (chunk, encoding, callback) {
     //TODO: call C++ method which processes a diff chunk
   }
 
-function patch(src, dst) {
+function patchFile(src, dst) {
   var aPatchObj = {};
   var aWritableStream = PatchStream(aPatchObj);
   return aWritableStream;
