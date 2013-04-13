@@ -13,19 +13,18 @@ extern "C" {
 
 using namespace v8;
 
-void init(Handle<Object> exports);
+void init(Handle<Object> exports) {
+  exports->Set(String::NewSymbol("diff_chunked"), FunctionTemplate::New(DiffChunked)->GetFunction());
+}
 
 NODE_MODULE(node_xdelta3, init);
 
 Handle<Value> DiffChunked(const Arguments& args);
 
-void init(Handle<Object> exports) {
-  exports->Set(String::NewSymbol("diff_chunked"), FunctionTemplate::New(DiffChunked)->GetFunction());
-}
-
 struct DiffChunked_data {
-  DiffChunked_data(int s, int d, Local<Function> cbData, Local<Function> cbEnd) : src(s), dst(d), 
-      firstTime(true), finishedProcessing(false), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(0) {
+  DiffChunked_data(int s, int d, Local<Function> cbData, Local<Function> cbEnd)
+    : src(s), dst(d), firstTime(true), finishedProcessing(false), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(0)
+  {
     callbackData = Persistent<Function>::New(cbData);
     callbackEnd = Persistent<Function>::New(cbEnd);
     memset (&stream, 0, sizeof (stream));
