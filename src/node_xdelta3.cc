@@ -29,8 +29,8 @@ protected:
 
 
   struct DiffChunked_data {
-    DiffChunked_data(int s, int d)
-      : src(s), dst(d), callbackSet(false), firstTime(true), finishedProcessing(false), diffBuffMemSize(0), diffBuffReadMaxSize(0), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(0)
+    DiffChunked_data(int s, int d, XdeltaDiff *pxd)
+      : xd(pxd), busy(false), src(s), dst(d), callbackSet(false), firstTime(true), finishedProcessing(false), diffBuffMemSize(0), diffBuffReadMaxSize(0), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(0)
     {
       memset (&stream, 0, sizeof (stream));
       memset (&source, 0, sizeof (source));
@@ -58,6 +58,18 @@ protected:
       callback = Persistent<Function>::New(cb);
       callbackSet = true;
     }
+
+    void StartAsync() {
+      busy = true;
+      xd->Ref();
+    }
+    void FinishAsync() {
+      busy = false;
+      xd->Unref();
+    }
+
+    XdeltaDiff *xd;
+    bool busy;
 
     int src, dst;
     Persistent<Function> callback;
@@ -119,8 +131,8 @@ Handle<Value> XdeltaDiff::New(const Arguments& args) {
   }
 
   XdeltaDiff* aXD = new XdeltaDiff();
-  aXD->diffData = new DiffChunked_data(args[0]->Uint32Value(), args[1]->Uint32Value());
   aXD->Wrap(args.This());
+  aXD->diffData = new DiffChunked_data(args[0]->Uint32Value(), args[1]->Uint32Value(), aXD);
 
   return args.This();
 }
@@ -133,8 +145,14 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
   }
 
   XdeltaDiff* aXD = ObjectWrap::Unwrap<XdeltaDiff>(args.This());
+
+  if (aXD->diffData->busy)
+    return ThrowException(Exception::TypeError(String::New("object busy with async op")));
+
   aXD->diffData->SetReadBuffSize(args[0]->Uint32Value());
   aXD->diffData->SetCallback(Local<Function>::Cast(args[1]));
+
+  aXD->diffData->StartAsync();
 
   uv_work_t* aReq = new uv_work_t();
   aReq->data = aXD->diffData;
@@ -262,6 +280,8 @@ void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
 void XdeltaDiff::DiffChunked_done(uv_work_t* req, int ) {
   HandleScope scope;
   DiffChunked_data* aData = (DiffChunked_data*) req->data;
+
+  aData->FinishAsync();
 
   if (aData->errType != 0 || (aData->finishedProcessing && aData->diffBuffSize == 0)) {
     TryCatch try_catch;
