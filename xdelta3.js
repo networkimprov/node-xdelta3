@@ -1,14 +1,15 @@
 module.exports = {
   diff: diff,
-  patch: patch
+  patchFile: patchFile
 };
 
 var Stream = require('stream');
+var util = require("util");
 var xdelta = require('./build/Release/node_xdelta3.node');
 
 
-function DiffStream(diffObj) { this.diffObj = diffObj; }
-DiffStream.prototype = new Stream.Readable();
+function DiffStream(diffObj) { Stream.Readable.call(this); this.diffObj = diffObj; }
+util.inherits(DiffStream, Stream.Readable);
 DiffStream.prototype._read = function(size) {
   /*TODO: pause and resume diff_chunked using diffObj*/
 };
@@ -30,11 +31,11 @@ function diff(src, dst) {
   return aStream;
 }
 
-function PatchStream(patchObj) { this.patchObj = patchObj; }
-PatchStream.prototype = new Stream.Writable();
+function PatchStream(patchObj) { Stream.Writable.call(this); this.patchObj = patchObj; }
+util.inherits(PatchStream, Stream.Writable);
 PatchStream.prototype._write = function (chunk, encoding, callback) {
-    //TODO: call C++ method which processes a diff chunk
-  }
+  //TODO: call C++ method which processes a diff chunk
+}
 
 function patchFile(src, dst) {
   var aPatchObj = {};
