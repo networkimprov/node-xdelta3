@@ -11,23 +11,20 @@ var xdelta = require('./build/Release/node_xdelta3.node');
 function DiffStream(diffObj) { Stream.Readable.call(this); this.diffObj = diffObj; }
 util.inherits(DiffStream, Stream.Readable);
 DiffStream.prototype._read = function(size) {
-  /*TODO: pause and resume diff_chunked using diffObj*/
+  var aThis = this;
+  this.diffObj.diff_chunked(size, function(err, data) {
+    if (err)
+      aThis.emit('error', err);
+    else if (typeof(data) != 'undefined') 
+      aThis.push(data);
+    else
+      aThis.push(null);
+  });
 };
 
 function diff(src, dst) {
-  var aDiffObj = {};
+  var aDiffObj = new xdelta.XdeldaDiff(src, dst);
   var aStream = new DiffStream(aDiffObj);
-  xdelta.diff_chunked( src, dst,
-    function (buf) {
-      aStream.push(buf);
-    },
-    function (err) {
-      if (typeof(err) == 'undefined')
-        aStream.push(null);
-      else
-        aStream.emit('error', err);
-    }
-  );
   return aStream;
 }
 

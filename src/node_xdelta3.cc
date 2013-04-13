@@ -8,83 +8,143 @@ extern "C" {
 
 #include <string>
 
-#define DEFAULT_CHUNK_SIZE 16384
 #define BLOCK_SIZE_XDELTA3 XD3_ALLOCSIZE
 
 using namespace v8;
+using namespace node;
+
+
+class XdeltaDiff : public ObjectWrap {
+
+public:
+  static Persistent<FunctionTemplate> constructor_template;
+  static void Init(Handle<Object> target);
+
+protected:
+
+  XdeltaDiff() : ObjectWrap(), diffData(NULL) {}
+  ~XdeltaDiff() { if (diffData) delete diffData; }
+
+  static Handle<Value> New(const Arguments& args);
+
+
+  struct DiffChunked_data {
+    DiffChunked_data(int s, int d)
+      : src(s), dst(d), callbackSet(false), firstTime(true), finishedProcessing(false), diffBuffMemSize(0), diffBuffReadMaxSize(0), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(0)
+    {
+      memset (&stream, 0, sizeof (stream));
+      memset (&source, 0, sizeof (source));
+      config.winsize = BLOCK_SIZE_XDELTA3;
+      source.blksize = BLOCK_SIZE_XDELTA3;
+      source.curblk = (const uint8_t*) new char[source.blksize];
+      inputBuf = (void*) new char[source.blksize];
+    };
+    ~DiffChunked_data() {
+      delete[] (char*)source.curblk;
+      delete[] (char*)inputBuf;
+      if (diffBuff) delete[] diffBuff;
+    };
+    void SetReadBuffSize(int size) {
+      diffBuffReadMaxSize = size;
+      if (size <= diffBuffMemSize)
+        return;
+      if (diffBuffMemSize != 0) delete[] diffBuff;
+      diffBuffMemSize = size;
+      diffBuff = new char[size];
+    }
+    void SetCallback(Local<Function> cb) {
+      if (callbackSet)
+        callback.Dispose();
+      callback = Persistent<Function>::New(cb);
+      callbackSet = true;
+    }
+
+    int src, dst;
+    Persistent<Function> callback;
+    bool callbackSet;
+
+    bool firstTime;
+    bool finishedProcessing;
+    int diffBuffMemSize;
+    int diffBuffReadMaxSize;
+    char* diffBuff;
+    int diffBuffSize;
+    unsigned wroteFromStream;
+    int readDstN;
+
+    int errType; // 0 - none, -1 - libuv, -2 - xdelta3
+    uv_err_t uvErr;
+    std::string xdeltaErr;
+
+    struct stat statbuf;
+    void* inputBuf;
+    xd3_stream stream;
+    xd3_config config;
+    xd3_source source;
+  };
+  DiffChunked_data *diffData;
+  static Handle<Value> DiffChunked(const Arguments& args);
+  static void DiffChunked_pool(uv_work_t* req);
+  static void DiffChunked_done(uv_work_t* req, int );
+};
+
+Persistent<FunctionTemplate> XdeltaDiff::constructor_template;
+
+void XdeltaDiff::Init(Handle<Object> target) {
+  HandleScope scope;
+
+  Local<FunctionTemplate> t = FunctionTemplate::New(New);
+
+  constructor_template = Persistent<FunctionTemplate>::New(t);
+  constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
+  constructor_template->SetClassName(String::NewSymbol("XdeldaDiff"));
+
+  NODE_SET_PROTOTYPE_METHOD(constructor_template, "diff_chunked", DiffChunked);
+
+  target->Set(String::NewSymbol("XdeldaDiff"), constructor_template->GetFunction());
+}
 
 void init(Handle<Object> exports) {
-  exports->Set(String::NewSymbol("diff_chunked"), FunctionTemplate::New(DiffChunked)->GetFunction());
+  XdeltaDiff::Init(exports);
 }
 
 NODE_MODULE(node_xdelta3, init);
 
-Handle<Value> DiffChunked(const Arguments& args);
 
-struct DiffChunked_data {
-  DiffChunked_data(int s, int d, Local<Function> cbData, Local<Function> cbEnd)
-    : src(s), dst(d), firstTime(true), finishedProcessing(false), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(0)
-  {
-    callbackData = Persistent<Function>::New(cbData);
-    callbackEnd = Persistent<Function>::New(cbEnd);
-    memset (&stream, 0, sizeof (stream));
-    memset (&source, 0, sizeof (source));
-    config.winsize = BLOCK_SIZE_XDELTA3;
-    source.blksize = BLOCK_SIZE_XDELTA3;
-    source.curblk = (const uint8_t*) new char[source.blksize];
-    inputBuf = (void*) new char[source.blksize];
-    diffBuff = new char[DEFAULT_CHUNK_SIZE];
-  };
-  ~DiffChunked_data() {
-    delete[] (char*)source.curblk;
-    delete[] (char*)inputBuf;
-    delete[] diffBuff;
-    callbackData.Dispose();
-    callbackEnd.Dispose();
-  };
-
-  int src, dst;
-  Persistent<Function> callbackData, callbackEnd;
-
-  bool firstTime;
-  bool finishedProcessing;
-  char* diffBuff;
-  int diffBuffSize;
-  unsigned wroteFromStream;
-  int readDstN;
-
-  int errType; // 0 - none, -1 - libuv, -2 - xdelta3
-  uv_err_t uvErr;
-  std::string xdeltaErr;
-
-  struct stat statbuf;
-  void* inputBuf;
-  xd3_stream stream;
-  xd3_config config;
-  xd3_source source;
-};
-
-void DiffChunked_pool(uv_work_t* req);
-void DiffChunked_done(uv_work_t* req, int );
-
-Handle<Value> DiffChunked(const Arguments& args) {
+Handle<Value> XdeltaDiff::New(const Arguments& args) {
   HandleScope scope;
 
-  if (args.Length() < 4 || !args[0]->IsInt32() || !args[1]->IsInt32() || !args[2]->IsFunction() || !args[3]->IsFunction()) {
-    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd, function, function)")));
+  if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsInt32()) {
+    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd)")));
   }
 
-  DiffChunked_data* aData;
-  aData = new DiffChunked_data(args[0]->Uint32Value(), args[1]->Uint32Value(), Local<Function>::Cast(args[2]), Local<Function>::Cast(args[3]));
-  uv_work_t* aReq = new uv_work_t();
-  aReq->data = aData;
+  XdeltaDiff* aXD = new XdeltaDiff();
+  aXD->diffData = new DiffChunked_data(args[0]->Uint32Value(), args[1]->Uint32Value());
+  aXD->Wrap(args.This());
 
-  uv_queue_work(uv_default_loop(), aReq, DiffChunked_pool, DiffChunked_done);
-  
-  return scope.Close(String::New("not developed"));
+  return args.This();
 }
 
-void DiffChunked_pool(uv_work_t* req) {
+Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
+  HandleScope scope;
+
+  if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsFunction()) {
+    return ThrowException(Exception::TypeError(String::New("arguments are (number, function)")));
+  }
+
+  XdeltaDiff* aXD = ObjectWrap::Unwrap<XdeltaDiff>(args.This());
+  aXD->diffData->SetReadBuffSize(args[0]->Uint32Value());
+  aXD->diffData->SetCallback(Local<Function>::Cast(args[1]));
+
+  uv_work_t* aReq = new uv_work_t();
+  aReq->data = aXD->diffData;
+
+  uv_queue_work(uv_default_loop(), aReq, DiffChunked_pool, DiffChunked_done);
+
+  return args.This();
+}
+
+void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
   DiffChunked_data* aData = (DiffChunked_data*) req->data;
   aData->diffBuffSize = 0;
 
@@ -107,7 +167,7 @@ void DiffChunked_pool(uv_work_t* req) {
   }
 
   if (aData->wroteFromStream < aData->stream.avail_out) { //if there is something left in the out stream to emit
-    int aWriteSize = (aData->stream.avail_out - aData->wroteFromStream > DEFAULT_CHUNK_SIZE) ? DEFAULT_CHUNK_SIZE : aData->stream.avail_out - aData->wroteFromStream;
+    int aWriteSize = (aData->stream.avail_out - aData->wroteFromStream > aData->diffBuffReadMaxSize) ? aData->diffBuffReadMaxSize : aData->stream.avail_out - aData->wroteFromStream;
     memcpy(aData->diffBuff, aData->stream.next_out + aData->wroteFromStream, aWriteSize);
     aData->diffBuffSize += aWriteSize;
     aData->wroteFromStream += aWriteSize;
@@ -152,7 +212,7 @@ void DiffChunked_pool(uv_work_t* req) {
 
     case XD3_OUTPUT:
     {
-      int aWriteSize = ((int)aData->stream.avail_out > DEFAULT_CHUNK_SIZE - aData->diffBuffSize) ? DEFAULT_CHUNK_SIZE - aData->diffBuffSize : aData->stream.avail_out;
+      int aWriteSize = ((int)aData->stream.avail_out > aData->diffBuffReadMaxSize - aData->diffBuffSize) ? aData->diffBuffReadMaxSize - aData->diffBuffSize : aData->stream.avail_out;
       memcpy(aData->diffBuff + aData->diffBuffSize, aData->stream.next_out, aWriteSize);
       aData->diffBuffSize += aWriteSize;
       aData->wroteFromStream = aWriteSize;
@@ -199,10 +259,10 @@ void DiffChunked_pool(uv_work_t* req) {
 
 }
 
-void DiffChunked_done(uv_work_t* req, int ) {
+void XdeltaDiff::DiffChunked_done(uv_work_t* req, int ) {
   HandleScope scope;
   DiffChunked_data* aData = (DiffChunked_data*) req->data;
-  
+
   if (aData->errType != 0 || (aData->finishedProcessing && aData->diffBuffSize == 0)) {
     TryCatch try_catch;
 
@@ -212,34 +272,25 @@ void DiffChunked_done(uv_work_t* req, int ) {
         argv[0] = String::New(uv_strerror(aData->uvErr));
       else
         argv[0] = String::New(aData->xdeltaErr.c_str());
-      aData->callbackEnd->Call(Context::GetCurrent()->Global(), 1, argv);
+      aData->callback->Call(Context::GetCurrent()->Global(), 1, argv);
     } else
-      aData->callbackEnd->Call(Context::GetCurrent()->Global(), 0, NULL);
+      aData->callback->Call(Context::GetCurrent()->Global(), 0, NULL);
     if (try_catch.HasCaught())
       node::FatalException(try_catch);
     delete req;
-    delete aData;
   } else {
     //emit the data
-
     node::Buffer *aSlowBuffer = node::Buffer::New(aData->diffBuff, aData->diffBuffSize);
     Local<Function> aBufferConstructor = Local<Function>::Cast(Context::GetCurrent()->Global()->Get(String::New("Buffer")));
     Handle<Value> aConstructorArgs[3] = { aSlowBuffer->handle_, Integer::New(aData->diffBuffSize), Integer::New(0) };
     Local<Object> aActualBuffer = aBufferConstructor->NewInstance(3, aConstructorArgs);
-
-    Local<Value> aArgv[1];
-    aArgv[0] = aActualBuffer;
+    Handle<Value> aArgv[2];
+    aArgv[0] = Undefined();
+    aArgv[1] = aActualBuffer;
     TryCatch try_catch;
-    aData->callbackData->Call(Context::GetCurrent()->Global(), 1, aArgv);
+    aData->callback->Call(Context::GetCurrent()->Global(), 2, aArgv);
     if (try_catch.HasCaught())
       node::FatalException(try_catch);
-
-    //keep on working
-    uv_queue_work(uv_default_loop(), req, DiffChunked_pool, DiffChunked_done);
   }
 }
-
-
-
-
 
