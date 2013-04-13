@@ -14,7 +14,11 @@ aDelta.on('data', function(bufferChunk) {
 });
 aDelta.on('end', function() {
   var aDiff = Buffer.concat(aDiffBufferList);
-  console.log(aDiff.toString());
   fs.closeSync(aSrcFd);
   fs.closeSync(aDstFd);
+  var aDiffOk = fs.readFileSync(path.resolve(__dirname, 'files/txt1gent'));
+  if (aDiff.toString('hex') == aDiffOk.toString('hex'))
+    console.log('OK:   Basic Diff');
+  else
+    console.log('FAIL: Basic Diff');
 });
