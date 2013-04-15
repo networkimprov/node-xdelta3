@@ -268,8 +268,11 @@ void XdeltaDiff::DiffChunked_done(uv_work_t* req, int ) {
       Local<Value> argv[1];
       if (aXd->mErrType == eErrUv)
         argv[0] = String::New(uv_strerror(aXd->mUvErr));
-      else
-        argv[0] = String::New(aXd->mXdeltaErr.c_str());
+      else {
+        std::string aErrStr("unexpected xd3_encode_input() result: ");
+        aErrStr.append(aXd->mXdeltaErr);
+        argv[0] = String::New(aErrStr.c_str());
+      }
       aXd->mCallback->Call(Context::GetCurrent()->Global(), 1, argv);
     } else
       aXd->mCallback->Call(Context::GetCurrent()->Global(), 0, NULL);
