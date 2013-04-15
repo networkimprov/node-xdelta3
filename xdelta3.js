@@ -25,6 +25,6 @@ DiffStream.prototype._read = function(size) {
 function PatchStream(src, dst) { stream.Writable.call(this); this.patchObj = new xdelta.XdeldaPatch(src, dst); }
 util.inherits(PatchStream, stream.Writable);
 PatchStream.prototype._write = function (chunk, encoding, callback) {
-  this.diffObj.patch_chunked(chunk, callback);
+  this.patchObj.patch_chunked(chunk, callback);
 }
 

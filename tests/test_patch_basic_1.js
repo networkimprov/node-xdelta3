@@ -8,9 +8,10 @@ var aDstFd = fs.openSync(path.resolve(__dirname, 'files/txt1result'), 'w');
 
 
 
-var aPatch = lXdelta3.PatchStream(aSrcFd, aDstFd);
+var aPatch = new lXdelta3.PatchStream(aSrcFd, aDstFd);
 aPatch.write(fs.readFileSync(path.resolve(__dirname, 'files/txt1gent')));
 aPatch.end();
+console.log('end');
 aPatch.on('finish', function() {
   console.log('patch finished');
   fs.closeSync(aSrcFd);
