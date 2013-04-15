@@ -111,9 +111,9 @@ void XdeltaDiff::Init(Handle<Object> target) {
 
   constructor_template = Persistent<FunctionTemplate>::New(t);
   constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  constructor_template->SetClassName(String::NewSymbol("XdeltaDiff")); //fix class name
+  constructor_template->SetClassName(String::NewSymbol("XdeltaDiff")); //fix class name in JS
 
-  NODE_SET_PROTOTYPE_METHOD(constructor_template, "diffChunked", DiffChunked); //fix method name
+  NODE_SET_PROTOTYPE_METHOD(constructor_template, "diffChunked", DiffChunked); //fix method name in JS
 
   target->Set(String::NewSymbol("XdeltaDiff"), constructor_template->GetFunction());
 }
@@ -168,9 +168,9 @@ void XdeltaPatch::Init(Handle<Object> target) {
 
   constructor_template = Persistent<FunctionTemplate>::New(t);
   constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  constructor_template->SetClassName(String::NewSymbol("XdeltaPatch")); //fix class name
+  constructor_template->SetClassName(String::NewSymbol("XdeltaPatch")); //fix class name in JS
 
-  NODE_SET_PROTOTYPE_METHOD(constructor_template, "patchChunked", PatchChunked); //fix method name
+  NODE_SET_PROTOTYPE_METHOD(constructor_template, "patchChunked", PatchChunked); //fix method name in JS
 
   target->Set(String::NewSymbol("XdeltaPatch"), constructor_template->GetFunction());
 }
