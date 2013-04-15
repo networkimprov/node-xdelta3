@@ -346,38 +346,24 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
   HandleScope scope;
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
 
-  aXd->FinishAsync();
+  Handle<Value> aArgv[2];
+  int aArgc = 2;
 
-  TryCatch try_catch;
-
-  if (aXd->mErrType != eErrNone || (aXd->mFinishedProcessing && aXd->mDiffBuffSize == 0)) {
-
-    if (aXd->mErrType != eErrNone) {
-      Local<Value> argv[1];
-      if (aXd->mErrType == eErrUv)
-        argv[0] = String::New(uv_strerror(aXd->mUvErr));
-      else {
-        std::string aErrStr("unexpected xd3_encode_input() result: ");
-        aErrStr.append(aXd->mXdeltaErr);
-        argv[0] = String::New(aErrStr.c_str());
-      }
-      aXd->mCallback->Call(Context::GetCurrent()->Global(), 1, argv);
-    } else
-      aXd->mCallback->Call(Context::GetCurrent()->Global(), 0, NULL);
+  if (aXd->mErrType != eErrNone) {
+    aArgv[0] = String::New(aXd->mErrType == eErrUv ? uv_strerror(aXd->mUvErr) : aXd->mXdeltaErr.c_str());
+    aArgc = 1;
+  } else if (aXd->mFinishedProcessing && aXd->mDiffBuffSize == 0) {
+    aArgc = 0;
   } else {
-    //emit the data
-    node::Buffer *aSlowBuffer = node::Buffer::New(aXd->mDiffBuff, aXd->mDiffBuffSize);
-    Local<Function> aBufferConstructor = Local<Function>::Cast(Context::GetCurrent()->Global()->Get(String::New("Buffer")));
-    Handle<Value> aConstructorArgs[3] = { aSlowBuffer->handle_, Integer::New(aXd->mDiffBuffSize), Integer::New(0) };
-    Local<Object> aActualBuffer = aBufferConstructor->NewInstance(3, aConstructorArgs);
-    Handle<Value> aArgv[2];
     aArgv[0] = Undefined();
-    aArgv[1] = aActualBuffer;
-
-    aXd->mCallback->Call(Context::GetCurrent()->Global(), 2, aArgv);
+    aArgv[1] = Buffer::New(aXd->mDiffBuff, aXd->mDiffBuffSize); //fix verify this
   }
+  TryCatch try_catch;
+  aXd->mCallback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
   if (try_catch.HasCaught())
-    node::FatalException(try_catch);
+    FatalException(try_catch);
+
+  aXd->FinishAsync();
   delete req;
 }
 
