@@ -33,7 +33,7 @@ protected:
   void StartAsync(Handle<Value> fn) {
     mBusy = true;
     Ref();
-    mCallback = Persistent<Function>::New(Local<Function>::Cast(fn)
+    mCallback = Persistent<Function>::New(Local<Function>::Cast(fn));
   }
   void FinishAsync() {
     mCallback.Dispose();
