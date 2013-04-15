@@ -60,9 +60,9 @@ protected:
   unsigned mWroteFromStream;
   int mReadDstN;
 
-  enum { eErrNone, eErrUv, eErrXd } mErrType; // 0 - none, -1 - libuv, -2 - xdelta3
+  enum { eErrNone, eErrUv, eErrXd } mErrType;
   uv_err_t mUvErr;
-  std::string mXdeltaErr;
+  std::string mXdErr;
 
   struct stat mStatbuf;
   void* mInputBuf;
@@ -306,7 +306,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         uv_fs_t aUvReq;
         int aBytesRead;
         aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno, NULL);
-          if (aBytesRead < 0) {
+        if (aBytesRead < 0) {
           aXd->mErrType = eErrUv;
           aXd->mUvErr = uv_last_error(uv_default_loop());
           xd3_close_stream(&aXd->mStream); //fix let end of function cleanup
@@ -323,7 +323,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         break;
       default:
         aXd->mErrType = eErrXd;
-        aXd->mXdeltaErr = aXd->mStream.msg;
+        aXd->mXdErr = aXd->mStream.msg;
         xd3_close_stream(&aXd->mStream); //fix let end of function cleanup
         xd3_free_stream(&aXd->mStream);
         return;
@@ -345,7 +345,7 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
   int aArgc = 2;
 
   if (aXd->mErrType != eErrNone) {
-    aArgv[0] = String::New(aXd->mErrType == eErrUv ? uv_strerror(aXd->mUvErr) : aXd->mXdeltaErr.c_str());
+    aArgv[0] = String::New(aXd->mErrType == eErrUv ? uv_strerror(aXd->mUvErr) : aXd->mXdErr.c_str());
     aArgc = 1;
   } else if (aXd->mFinishedProcessing && aXd->mDiffBuffSize == 0) {
     aArgc = 0;
