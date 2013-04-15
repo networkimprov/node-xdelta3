@@ -20,80 +20,59 @@ public:
 
 protected:
 
-  XdeltaDiff() : ObjectWrap(), diffData(NULL) {}
-  ~XdeltaDiff() { if (diffData) delete diffData; }
+  XdeltaDiff(int s, int d)
+    : ObjectWrap(), mBusy(false), mSrc(s), mDst(d), mCallbackSet(false), mFirstTime(true), mFinishedProcessing(false),
+    mDiffBuffMemSize(0), mDiffBuffReadMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mReadDstN(0), mErrType(eErrNone)
+  {
+    memset (&mStream, 0, sizeof (mStream));
+    memset (&mSource, 0, sizeof (mSource));
+    mConfig.winsize = XD3_ALLOCSIZE;
+    mSource.blksize = XD3_ALLOCSIZE;
+    mSource.curblk = (const uint8_t*) new char[mSource.blksize];
+    mInputBuf = (void*) new char[mSource.blksize];
+  };
+  ~XdeltaDiff() {
+    delete[] (char*)mSource.curblk;
+    delete[] (char*)mInputBuf;
+    if (mDiffBuff) delete[] mDiffBuff;
+  }
 
   static Handle<Value> New(const Arguments& args);
 
-  enum ErrorType { eErrNone, eErrUv, eErrXd };
+  bool mBusy;
 
-  struct DiffChunked_data {
-    DiffChunked_data(int s, int d, XdeltaDiff *pxd)
-      : xd(pxd), busy(false), src(s), dst(d), callbackSet(false), firstTime(true), finishedProcessing(false), diffBuffMemSize(0), diffBuffReadMaxSize(0), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(eErrNone)
-    {
-      memset (&stream, 0, sizeof (stream));
-      memset (&source, 0, sizeof (source));
-      config.winsize = XD3_ALLOCSIZE;
-      source.blksize = XD3_ALLOCSIZE;
-      source.curblk = (const uint8_t*) new char[source.blksize];
-      inputBuf = (void*) new char[source.blksize];
-    };
-    ~DiffChunked_data() {
-      delete[] (char*)source.curblk;
-      delete[] (char*)inputBuf;
-      if (diffBuff) delete[] diffBuff;
-    };
-    void SetReadBuffSize(int size) {
-      diffBuffReadMaxSize = size;
-      if (size <= diffBuffMemSize)
-        return;
-      if (diffBuffMemSize != 0) delete[] diffBuff;
-      diffBuffMemSize = size;
-      diffBuff = new char[size];
-    }
-    void SetCallback(Local<Function> cb) {
-      if (callbackSet)
-        callback.Dispose();
-      callback = Persistent<Function>::New(cb);
-      callbackSet = true;
-    }
+  int mSrc, mDst;
+  Persistent<Function> mCallback;
+  bool mCallbackSet;
 
-    void StartAsync() {
-      busy = true;
-      xd->Ref();
-    }
-    void FinishAsync() {
-      busy = false;
-      xd->Unref();
-    }
+  bool mFirstTime;
+  bool mFinishedProcessing;
+  int mDiffBuffMemSize;
+  int mDiffBuffReadMaxSize;
+  char* mDiffBuff;
+  int mDiffBuffSize;
+  unsigned mWroteFromStream;
+  int mReadDstN;
 
-    XdeltaDiff *xd;
-    bool busy;
+  enum { eErrNone, eErrUv, eErrXd } mErrType; // 0 - none, -1 - libuv, -2 - xdelta3
+  uv_err_t mUvErr;
+  std::string mXdeltaErr;
 
-    int src, dst;
-    Persistent<Function> callback;
-    bool callbackSet;
+  struct stat mStatbuf;
+  void* mInputBuf;
+  xd3_stream mStream;
+  xd3_config mConfig;
+  xd3_source mSource;
 
-    bool firstTime;
-    bool finishedProcessing;
-    int diffBuffMemSize;
-    int diffBuffReadMaxSize;
-    char* diffBuff;
-    int diffBuffSize;
-    unsigned wroteFromStream;
-    int readDstN;
+  void StartAsync() {
+    mBusy = true;
+    Ref();
+  }
+  void FinishAsync() {
+    mBusy = false;
+    Unref();
+  }
 
-    ErrorType errType; // 0 - none, -1 - libuv, -2 - xdelta3
-    uv_err_t uvErr;
-    std::string xdeltaErr;
-
-    struct stat statbuf;
-    void* inputBuf;
-    xd3_stream stream;
-    xd3_config config;
-    xd3_source source;
-  };
-  DiffChunked_data *diffData;
   static Handle<Value> DiffChunked(const Arguments& args);
   static void DiffChunked_pool(uv_work_t* req);
   static void DiffChunked_done(uv_work_t* req, int );
@@ -128,9 +107,9 @@ Handle<Value> XdeltaDiff::New(const Arguments& args) {
   if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsInt32())
     return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd)")));
 
-  XdeltaDiff* aXD = new XdeltaDiff();
+  XdeltaDiff* aXD = new XdeltaDiff(args[0]->Uint32Value(), args[1]->Uint32Value());
+
   aXD->Wrap(args.This());
-  aXD->diffData = new DiffChunked_data(args[0]->Uint32Value(), args[1]->Uint32Value(), aXD);
 
   return args.This();
 }
@@ -141,18 +120,28 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
   if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsFunction())
     return ThrowException(Exception::TypeError(String::New("arguments are (number, function)")));
 
-  XdeltaDiff* aXD = ObjectWrap::Unwrap<XdeltaDiff>(args.This());
+  XdeltaDiff* aXd = ObjectWrap::Unwrap<XdeltaDiff>(args.This());
 
-  if (aXD->diffData->busy)
+  if (aXd->mBusy)
     return ThrowException(Exception::TypeError(String::New("object busy with async op")));
 
-  aXD->diffData->SetReadBuffSize(args[0]->Uint32Value());
-  aXD->diffData->SetCallback(Local<Function>::Cast(args[1]));
 
-  aXD->diffData->StartAsync();
+  aXd->mDiffBuffReadMaxSize = args[0]->Uint32Value();
+  if (aXd->mDiffBuffReadMaxSize > aXd->mDiffBuffMemSize) {
+    if (aXd->mDiffBuffMemSize != 0) delete[] aXd->mDiffBuff;
+    aXd->mDiffBuffMemSize = aXd->mDiffBuffReadMaxSize;
+    aXd->mDiffBuff = new char[aXd->mDiffBuffReadMaxSize];
+  }
+   
+  if (aXd->mCallbackSet)
+    aXd->mCallback.Dispose();
+  aXd->mCallback = Persistent<Function>::New(Local<Function>::Cast(args[1]));
+  aXd->mCallbackSet = true;
+
+  aXd->StartAsync();
 
   uv_work_t* aReq = new uv_work_t();
-  aReq->data = aXD->diffData;
+  aReq->data = aXd;
 
   uv_queue_work(uv_default_loop(), aReq, DiffChunked_pool, DiffChunked_done);
 
@@ -160,90 +149,90 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
 }
 
 void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
-  DiffChunked_data* aData = (DiffChunked_data*) req->data;
-  aData->diffBuffSize = 0;
+  XdeltaDiff* aXd = (XdeltaDiff*) req->data;
+  aXd->mDiffBuffSize = 0;
 
-  if (aData->firstTime) {
-    xd3_init_config(&aData->config, XD3_ADLER32);
-    xd3_config_stream(&aData->stream, &aData->config);
+  if (aXd->mFirstTime) {
+    xd3_init_config(&aXd->mConfig, XD3_ADLER32);
+    xd3_config_stream(&aXd->mStream, &aXd->mConfig);
 
     uv_fs_t aUvReq;
     int aBytesRead;
-    aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->src, (void*)aData->source.curblk, aData->source.blksize, 0, NULL);
+    aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mSrc, (void*)aXd->mSource.curblk, aXd->mSource.blksize, 0, NULL);
     if (aBytesRead < 0) {
-      aData->errType = eErrUv;
-      aData->uvErr = uv_last_error(uv_default_loop());
+      aXd->mErrType = eErrUv;
+      aXd->mUvErr = uv_last_error(uv_default_loop());
       return;
     }
-    aData->source.onblk = aBytesRead;
-    aData->source.curblkno = 0;
+    aXd->mSource.onblk = aBytesRead;
+    aXd->mSource.curblkno = 0;
 
-    xd3_set_source(&aData->stream, &aData->source);
+    xd3_set_source(&aXd->mStream, &aXd->mSource);
   }
 
-  if (aData->wroteFromStream < aData->stream.avail_out) { //if there is something left in the out stream to emit
-    int aWriteSize = (aData->stream.avail_out - aData->wroteFromStream > aData->diffBuffReadMaxSize) ? aData->diffBuffReadMaxSize : aData->stream.avail_out - aData->wroteFromStream;
-    memcpy(aData->diffBuff, aData->stream.next_out + aData->wroteFromStream, aWriteSize);
-    aData->diffBuffSize += aWriteSize;
-    aData->wroteFromStream += aWriteSize;
-    if (aData->wroteFromStream < aData->stream.avail_out)
+  if (aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to emit
+    int aWriteSize = (aXd->mStream.avail_out - aXd->mWroteFromStream > aXd->mDiffBuffReadMaxSize) ? aXd->mDiffBuffReadMaxSize : aXd->mStream.avail_out - aXd->mWroteFromStream;
+    memcpy(aXd->mDiffBuff, aXd->mStream.next_out + aXd->mWroteFromStream, aWriteSize);
+    aXd->mDiffBuffSize += aWriteSize;
+    aXd->mWroteFromStream += aWriteSize;
+    if (aXd->mWroteFromStream < aXd->mStream.avail_out)
       return;
-    xd3_consume_output(&aData->stream);
+    xd3_consume_output(&aXd->mStream);
   }
 
-  if (aData->finishedProcessing)
+  if (aXd->mFinishedProcessing)
     return;
 
   int aInputBufRead = 0;
-  bool aRead = aData->firstTime; //if it is not firstTime, XD3_OUTPUT was called last, so read is not necessary
-  aData->firstTime = false;
+  bool aRead = aXd->mFirstTime; //if it is not firstTime, XD3_OUTPUT was called last, so read is not necessary
+  aXd->mFirstTime = false;
   do {
     if (aRead) {
       aRead = false;
       uv_fs_t aUvReq;
-      aInputBufRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->dst, aData->inputBuf, XD3_ALLOCSIZE, aData->readDstN * XD3_ALLOCSIZE, NULL);
-      aData->readDstN++;
+      aInputBufRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mDst, aXd->mInputBuf, XD3_ALLOCSIZE, aXd->mReadDstN * XD3_ALLOCSIZE, NULL);
+      aXd->mReadDstN++;
       if (aInputBufRead < 0) {
-        aData->errType = eErrUv;
-        aData->uvErr = uv_last_error(uv_default_loop());
+        aXd->mErrType = eErrUv;
+        aXd->mUvErr = uv_last_error(uv_default_loop());
         return;
       }
       if (aInputBufRead < (int) XD3_ALLOCSIZE)
-        xd3_set_flags(&aData->stream, XD3_FLUSH | aData->stream.flags);
-      xd3_avail_input(&aData->stream, (const uint8_t*) aData->inputBuf, aInputBufRead);
+        xd3_set_flags(&aXd->mStream, XD3_FLUSH | aXd->mStream.flags);
+      xd3_avail_input(&aXd->mStream, (const uint8_t*) aXd->mInputBuf, aInputBufRead);
     }
 
     process:
 
-    int aRet = xd3_encode_input(&aData->stream);
+    int aRet = xd3_encode_input(&aXd->mStream);
     switch (aRet) {
     case XD3_INPUT:
       aRead = true;
       continue;
 
     case XD3_OUTPUT: {
-      int aWriteSize = ((int)aData->stream.avail_out > aData->diffBuffReadMaxSize - aData->diffBuffSize) ? aData->diffBuffReadMaxSize - aData->diffBuffSize : aData->stream.avail_out;
-      memcpy(aData->diffBuff + aData->diffBuffSize, aData->stream.next_out, aWriteSize);
-      aData->diffBuffSize += aWriteSize;
-      aData->wroteFromStream = aWriteSize;
+      int aWriteSize = ((int)aXd->mStream.avail_out > aXd->mDiffBuffReadMaxSize - aXd->mDiffBuffSize) ? aXd->mDiffBuffReadMaxSize - aXd->mDiffBuffSize : aXd->mStream.avail_out;
+      memcpy(aXd->mDiffBuff + aXd->mDiffBuffSize, aXd->mStream.next_out, aWriteSize);
+      aXd->mDiffBuffSize += aWriteSize;
+      aXd->mWroteFromStream = aWriteSize;
 
-      if (aData->wroteFromStream < aData->stream.avail_out) //diff buffer is full
+      if (aXd->mWroteFromStream < aXd->mStream.avail_out) //diff buffer is full
         return;
-      xd3_consume_output(&aData->stream);
+      xd3_consume_output(&aXd->mStream);
 
       goto process;
     }
     case XD3_GETSRCBLK: {
       uv_fs_t aUvReq;
       int aBytesRead;
-      aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->src, (void*) aData->source.curblk, aData->source.blksize, aData->source.blksize * aData->source.getblkno, NULL);
+      aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno, NULL);
       if (aBytesRead < 0) {
-        aData->errType = eErrUv;
-        aData->uvErr = uv_last_error(uv_default_loop());
+        aXd->mErrType = eErrUv;
+        aXd->mUvErr = uv_last_error(uv_default_loop());
         return;
       }
-      aData->source.onblk = aBytesRead;
-      aData->source.curblkno = aData->source.getblkno;
+      aXd->mSource.onblk = aBytesRead;
+      aXd->mSource.curblkno = aXd->mSource.getblkno;
       goto process;  
     }
     case XD3_GOTHEADER:
@@ -251,52 +240,52 @@ void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
     case XD3_WINFINISH:
       goto process;
     default:
-      aData->errType = eErrXd;
-      aData->xdeltaErr = aData->stream.msg;
-      xd3_close_stream(&aData->stream);
-      xd3_free_stream(&aData->stream);
+      aXd->mErrType = eErrXd;
+      aXd->mXdeltaErr = aXd->mStream.msg;
+      xd3_close_stream(&aXd->mStream);
+      xd3_free_stream(&aXd->mStream);
       return;
     }
 
   } while (aInputBufRead == XD3_ALLOCSIZE);
 
-  xd3_close_stream(&aData->stream);
-  xd3_free_stream(&aData->stream);
+  xd3_close_stream(&aXd->mStream);
+  xd3_free_stream(&aXd->mStream);
 
-  aData->finishedProcessing = true;
+  aXd->mFinishedProcessing = true;
 
 }
 
 void XdeltaDiff::DiffChunked_done(uv_work_t* req, int ) {
   HandleScope scope;
-  DiffChunked_data* aData = (DiffChunked_data*) req->data;
+  XdeltaDiff* aXd = (XdeltaDiff*) req->data;
 
-  aData->FinishAsync();
+  aXd->FinishAsync();
 
   TryCatch try_catch;
 
-  if (aData->errType != eErrNone || (aData->finishedProcessing && aData->diffBuffSize == 0)) {
+  if (aXd->mErrType != eErrNone || (aXd->mFinishedProcessing && aXd->mDiffBuffSize == 0)) {
 
-    if (aData->errType != eErrNone) {
+    if (aXd->mErrType != eErrNone) {
       Local<Value> argv[1];
-      if (aData->errType == eErrUv)
-        argv[0] = String::New(uv_strerror(aData->uvErr));
+      if (aXd->mErrType == eErrUv)
+        argv[0] = String::New(uv_strerror(aXd->mUvErr));
       else
-        argv[0] = String::New(aData->xdeltaErr.c_str());
-      aData->callback->Call(Context::GetCurrent()->Global(), 1, argv);
+        argv[0] = String::New(aXd->mXdeltaErr.c_str());
+      aXd->mCallback->Call(Context::GetCurrent()->Global(), 1, argv);
     } else
-      aData->callback->Call(Context::GetCurrent()->Global(), 0, NULL);
+      aXd->mCallback->Call(Context::GetCurrent()->Global(), 0, NULL);
   } else {
     //emit the data
-    node::Buffer *aSlowBuffer = node::Buffer::New(aData->diffBuff, aData->diffBuffSize);
+    node::Buffer *aSlowBuffer = node::Buffer::New(aXd->mDiffBuff, aXd->mDiffBuffSize);
     Local<Function> aBufferConstructor = Local<Function>::Cast(Context::GetCurrent()->Global()->Get(String::New("Buffer")));
-    Handle<Value> aConstructorArgs[3] = { aSlowBuffer->handle_, Integer::New(aData->diffBuffSize), Integer::New(0) };
+    Handle<Value> aConstructorArgs[3] = { aSlowBuffer->handle_, Integer::New(aXd->mDiffBuffSize), Integer::New(0) };
     Local<Object> aActualBuffer = aBufferConstructor->NewInstance(3, aConstructorArgs);
     Handle<Value> aArgv[2];
     aArgv[0] = Undefined();
     aArgv[1] = aActualBuffer;
 
-    aData->callback->Call(Context::GetCurrent()->Global(), 2, aArgv);
+    aXd->mCallback->Call(Context::GetCurrent()->Global(), 2, aArgv);
   }
   if (try_catch.HasCaught())
     node::FatalException(try_catch);
