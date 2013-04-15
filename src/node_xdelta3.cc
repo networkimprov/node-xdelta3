@@ -119,11 +119,11 @@ void XdeltaDiff::Init(Handle<Object> target) {
 
   constructor_template = Persistent<FunctionTemplate>::New(t);
   constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  constructor_template->SetClassName(String::NewSymbol("XdeldaDiff"));
+  constructor_template->SetClassName(String::NewSymbol("XdeltaDiff")); //fix class name
 
-  NODE_SET_PROTOTYPE_METHOD(constructor_template, "diff_chunked", DiffChunked);
+  NODE_SET_PROTOTYPE_METHOD(constructor_template, "diffChunked", DiffChunked); //fix method name
 
-  target->Set(String::NewSymbol("XdeldaDiff"), constructor_template->GetFunction());
+  target->Set(String::NewSymbol("XdeltaDiff"), constructor_template->GetFunction());
 }
 
 Handle<Value> XdeltaDiff::New(const Arguments& args) {
@@ -180,11 +180,11 @@ void XdeltaPatch::Init(Handle<Object> target) {
 
   constructor_template = Persistent<FunctionTemplate>::New(t);
   constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  constructor_template->SetClassName(String::NewSymbol("XdeldaPatch"));
+  constructor_template->SetClassName(String::NewSymbol("XdeltaPatch")); //fix class name
 
-  NODE_SET_PROTOTYPE_METHOD(constructor_template, "patch_chunked", PatchChunked);
+  NODE_SET_PROTOTYPE_METHOD(constructor_template, "patchChunked", PatchChunked); //fix method name
 
-  target->Set(String::NewSymbol("XdeldaPatch"), constructor_template->GetFunction());
+  target->Set(String::NewSymbol("XdeltaPatch"), constructor_template->GetFunction());
 }
 
 Handle<Value> XdeltaPatch::New(const Arguments& args) {
