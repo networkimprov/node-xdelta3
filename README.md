@@ -11,7 +11,7 @@ creates a readable stream
 
 **xdelta3.patchFile(fd src, fd dest);**  
 src - original file  
-dest - file generated from diff
+dest - file generated from diff  
 return a writable stream  
 
 # USAGE
