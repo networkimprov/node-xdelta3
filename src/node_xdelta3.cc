@@ -8,8 +8,6 @@ extern "C" {
 
 #include <string>
 
-#define BLOCK_SIZE_XDELTA3 XD3_ALLOCSIZE
-
 using namespace v8;
 using namespace node;
 
@@ -27,15 +25,16 @@ protected:
 
   static Handle<Value> New(const Arguments& args);
 
+  enum ErrorType { eErrNone, eErrUv, eErrXd };
 
   struct DiffChunked_data {
     DiffChunked_data(int s, int d, XdeltaDiff *pxd)
-      : xd(pxd), busy(false), src(s), dst(d), callbackSet(false), firstTime(true), finishedProcessing(false), diffBuffMemSize(0), diffBuffReadMaxSize(0), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(0)
+      : xd(pxd), busy(false), src(s), dst(d), callbackSet(false), firstTime(true), finishedProcessing(false), diffBuffMemSize(0), diffBuffReadMaxSize(0), diffBuffSize(0), wroteFromStream(0), readDstN(0), errType(eErrNone)
     {
       memset (&stream, 0, sizeof (stream));
       memset (&source, 0, sizeof (source));
-      config.winsize = BLOCK_SIZE_XDELTA3;
-      source.blksize = BLOCK_SIZE_XDELTA3;
+      config.winsize = XD3_ALLOCSIZE;
+      source.blksize = XD3_ALLOCSIZE;
       source.curblk = (const uint8_t*) new char[source.blksize];
       inputBuf = (void*) new char[source.blksize];
     };
@@ -84,7 +83,7 @@ protected:
     unsigned wroteFromStream;
     int readDstN;
 
-    int errType; // 0 - none, -1 - libuv, -2 - xdelta3
+    ErrorType errType; // 0 - none, -1 - libuv, -2 - xdelta3
     uv_err_t uvErr;
     std::string xdeltaErr;
 
@@ -126,9 +125,8 @@ NODE_MODULE(node_xdelta3, init);
 Handle<Value> XdeltaDiff::New(const Arguments& args) {
   HandleScope scope;
 
-  if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsInt32()) {
+  if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsInt32())
     return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd)")));
-  }
 
   XdeltaDiff* aXD = new XdeltaDiff();
   aXD->Wrap(args.This());
@@ -140,9 +138,8 @@ Handle<Value> XdeltaDiff::New(const Arguments& args) {
 Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
   HandleScope scope;
 
-  if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsFunction()) {
+  if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsFunction())
     return ThrowException(Exception::TypeError(String::New("arguments are (number, function)")));
-  }
 
   XdeltaDiff* aXD = ObjectWrap::Unwrap<XdeltaDiff>(args.This());
 
@@ -174,7 +171,7 @@ void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
     int aBytesRead;
     aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->src, (void*)aData->source.curblk, aData->source.blksize, 0, NULL);
     if (aBytesRead < 0) {
-      aData->errType = -1;
+      aData->errType = eErrUv;
       aData->uvErr = uv_last_error(uv_default_loop());
       return;
     }
@@ -191,8 +188,7 @@ void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
     aData->wroteFromStream += aWriteSize;
     if (aData->wroteFromStream < aData->stream.avail_out)
       return;
-    else
-      xd3_consume_output(&aData->stream);
+    xd3_consume_output(&aData->stream);
   }
 
   if (aData->finishedProcessing)
@@ -205,31 +201,27 @@ void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
     if (aRead) {
       aRead = false;
       uv_fs_t aUvReq;
-      aInputBufRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->dst, aData->inputBuf, BLOCK_SIZE_XDELTA3, aData->readDstN * BLOCK_SIZE_XDELTA3, NULL);
+      aInputBufRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->dst, aData->inputBuf, XD3_ALLOCSIZE, aData->readDstN * XD3_ALLOCSIZE, NULL);
       aData->readDstN++;
       if (aInputBufRead < 0) {
-        aData->errType = -1;
+        aData->errType = eErrUv;
         aData->uvErr = uv_last_error(uv_default_loop());
         return;
       }
-      if (aInputBufRead < (int) BLOCK_SIZE_XDELTA3)
-      {
+      if (aInputBufRead < (int) XD3_ALLOCSIZE)
         xd3_set_flags(&aData->stream, XD3_FLUSH | aData->stream.flags);
-      }
       xd3_avail_input(&aData->stream, (const uint8_t*) aData->inputBuf, aInputBufRead);
     }
 
     process:
 
     int aRet = xd3_encode_input(&aData->stream);
-    switch (aRet)
-    {
+    switch (aRet) {
     case XD3_INPUT:
       aRead = true;
       continue;
 
-    case XD3_OUTPUT:
-    {
+    case XD3_OUTPUT: {
       int aWriteSize = ((int)aData->stream.avail_out > aData->diffBuffReadMaxSize - aData->diffBuffSize) ? aData->diffBuffReadMaxSize - aData->diffBuffSize : aData->stream.avail_out;
       memcpy(aData->diffBuff + aData->diffBuffSize, aData->stream.next_out, aWriteSize);
       aData->diffBuffSize += aWriteSize;
@@ -237,18 +229,16 @@ void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
 
       if (aData->wroteFromStream < aData->stream.avail_out) //diff buffer is full
         return;
-      else
-        xd3_consume_output(&aData->stream);
+      xd3_consume_output(&aData->stream);
 
       goto process;
     }
-    case XD3_GETSRCBLK:
-    {
+    case XD3_GETSRCBLK: {
       uv_fs_t aUvReq;
       int aBytesRead;
       aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aData->src, (void*) aData->source.curblk, aData->source.blksize, aData->source.blksize * aData->source.getblkno, NULL);
       if (aBytesRead < 0) {
-        aData->errType = -1;
+        aData->errType = eErrUv;
         aData->uvErr = uv_last_error(uv_default_loop());
         return;
       }
@@ -261,14 +251,14 @@ void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
     case XD3_WINFINISH:
       goto process;
     default:
-      aData->errType = -2;
+      aData->errType = eErrXd;
       aData->xdeltaErr = aData->stream.msg;
       xd3_close_stream(&aData->stream);
       xd3_free_stream(&aData->stream);
       return;
     }
 
-  } while (aInputBufRead == BLOCK_SIZE_XDELTA3);
+  } while (aInputBufRead == XD3_ALLOCSIZE);
 
   xd3_close_stream(&aData->stream);
   xd3_free_stream(&aData->stream);
@@ -283,21 +273,19 @@ void XdeltaDiff::DiffChunked_done(uv_work_t* req, int ) {
 
   aData->FinishAsync();
 
-  if (aData->errType != 0 || (aData->finishedProcessing && aData->diffBuffSize == 0)) {
-    TryCatch try_catch;
+  TryCatch try_catch;
 
-    if (aData->errType != 0) {
+  if (aData->errType != eErrNone || (aData->finishedProcessing && aData->diffBuffSize == 0)) {
+
+    if (aData->errType != eErrNone) {
       Local<Value> argv[1];
-      if (aData->errType == -1)
+      if (aData->errType == eErrUv)
         argv[0] = String::New(uv_strerror(aData->uvErr));
       else
         argv[0] = String::New(aData->xdeltaErr.c_str());
       aData->callback->Call(Context::GetCurrent()->Global(), 1, argv);
     } else
       aData->callback->Call(Context::GetCurrent()->Global(), 0, NULL);
-    if (try_catch.HasCaught())
-      node::FatalException(try_catch);
-    delete req;
   } else {
     //emit the data
     node::Buffer *aSlowBuffer = node::Buffer::New(aData->diffBuff, aData->diffBuffSize);
@@ -307,10 +295,11 @@ void XdeltaDiff::DiffChunked_done(uv_work_t* req, int ) {
     Handle<Value> aArgv[2];
     aArgv[0] = Undefined();
     aArgv[1] = aActualBuffer;
-    TryCatch try_catch;
+
     aData->callback->Call(Context::GetCurrent()->Global(), 2, aArgv);
-    if (try_catch.HasCaught())
-      node::FatalException(try_catch);
   }
+  if (try_catch.HasCaught())
+    node::FatalException(try_catch);
+  delete req;
 }
 
