@@ -13,11 +13,9 @@ using namespace node;
 
 
 class XdeltaOp : public ObjectWrap {
-
 protected:
-
-  XdeltaOp(int s, int d)
-    : ObjectWrap(), mBusy(false), mSrc(s), mDst(d), mFirstTime(true), mFinishedProcessing(false),
+  XdeltaOp(int s, int d, int op)
+  : ObjectWrap(), mSrc(s), mDst(d), mOpType(op), mBusy(false), mFirstTime(true), mFinishedProcessing(false),
     mDiffBuffMemSize(0), mDiffBuffMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mReadDstN(0), mErrType(eErrNone)
   {
     memset (&mStream, 0, sizeof (mStream));
@@ -26,12 +24,23 @@ protected:
     mSource.blksize = XD3_ALLOCSIZE;
     mSource.curblk = (const uint8_t*) new char[mSource.blksize];
     mInputBuf = (void*) new char[mSource.blksize];
-  };
+  }
   virtual ~XdeltaOp() {
     delete[] (char*)mSource.curblk;
     delete[] (char*)mInputBuf;
     if (mDiffBuff) delete[] mDiffBuff;
   }
+  void StartAsync() {
+    mBusy = true;
+    Ref();
+  }
+  void FinishAsync() {
+    mBusy = false;
+    Unref();
+  }
+
+  static void OpChunked_pool(uv_work_t* req);
+  static void OpChunked_done(uv_work_t* req, int );
 
   bool mBusy;
 
@@ -58,48 +67,29 @@ protected:
   xd3_stream mStream;
   xd3_config mConfig;
   xd3_source mSource;
-
-  void StartAsync() {
-    mBusy = true;
-    Ref();
-  }
-  void FinishAsync() {
-    mBusy = false;
-    Unref();
-  }
-
-  static void OpChunked_pool(uv_work_t* req);
-  static void OpChunked_done(uv_work_t* req, int );
-
 };
 
 class XdeltaDiff : public XdeltaOp {
-
 public:
   static Persistent<FunctionTemplate> constructor_template;
   static void Init(Handle<Object> target);
 
 protected:
-
-  XdeltaDiff(int s, int d) : XdeltaOp(s, d) { mOpType = eOpDiff; };
+  XdeltaDiff(int s, int d) : XdeltaOp(s, d, eOpDiff) { };
 
   static Handle<Value> New(const Arguments& args);
-
   static Handle<Value> DiffChunked(const Arguments& args);
 };
 
 class XdeltaPatch : public XdeltaOp {
-
 public:
   static Persistent<FunctionTemplate> constructor_template;
   static void Init(Handle<Object> target);
 
 protected:
-
-  XdeltaPatch(int s, int d) : XdeltaOp(s, d) { mOpType = eOpPatch; };
+  XdeltaPatch(int s, int d) : XdeltaOp(s, d, eOpPatch) { };
 
   static Handle<Value> New(const Arguments& args);
-
   static Handle<Value> PatchChunked(const Arguments& args);
 };
 
