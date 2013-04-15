@@ -204,53 +204,50 @@ void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
       xd3_avail_input(&aXd->mStream, (const uint8_t*) aXd->mInputBuf, aInputBufRead);
     }
 
-    process:
+    do {
+      int aRet = xd3_encode_input(&aXd->mStream);
+      switch (aRet) {
+      case XD3_INPUT:
+        aRead = true;
+        break;
+      case XD3_OUTPUT: {
+        int aWriteSize = ((int)aXd->mStream.avail_out > aXd->mDiffBuffReadMaxSize - aXd->mDiffBuffSize) ? aXd->mDiffBuffReadMaxSize - aXd->mDiffBuffSize : aXd->mStream.avail_out;
+        memcpy(aXd->mDiffBuff + aXd->mDiffBuffSize, aXd->mStream.next_out, aWriteSize);
+        aXd->mDiffBuffSize += aWriteSize;
+        aXd->mWroteFromStream = aWriteSize;
 
-    int aRet = xd3_encode_input(&aXd->mStream);
-    switch (aRet) {
-    case XD3_INPUT:
-      aRead = true;
-      continue;
-
-    case XD3_OUTPUT: {
-      int aWriteSize = ((int)aXd->mStream.avail_out > aXd->mDiffBuffReadMaxSize - aXd->mDiffBuffSize) ? aXd->mDiffBuffReadMaxSize - aXd->mDiffBuffSize : aXd->mStream.avail_out;
-      memcpy(aXd->mDiffBuff + aXd->mDiffBuffSize, aXd->mStream.next_out, aWriteSize);
-      aXd->mDiffBuffSize += aWriteSize;
-      aXd->mWroteFromStream = aWriteSize;
-
-      if (aXd->mWroteFromStream < aXd->mStream.avail_out) //diff buffer is full
-        return;
-      xd3_consume_output(&aXd->mStream);
-
-      goto process;
-    }
-    case XD3_GETSRCBLK: {
-      uv_fs_t aUvReq;
-      int aBytesRead;
-      aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno, NULL);
-      if (aBytesRead < 0) {
-        aXd->mErrType = eErrUv;
-        aXd->mUvErr = uv_last_error(uv_default_loop());
+       if (aXd->mWroteFromStream < aXd->mStream.avail_out) //diff buffer is full
+           return;
+        xd3_consume_output(&aXd->mStream);
+        break;
+      }
+      case XD3_GETSRCBLK: {
+        uv_fs_t aUvReq;
+        int aBytesRead;
+        aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno, NULL);
+          if (aBytesRead < 0) {
+          aXd->mErrType = eErrUv;
+          aXd->mUvErr = uv_last_error(uv_default_loop());
+          xd3_close_stream(&aXd->mStream);
+          xd3_free_stream(&aXd->mStream);
+          return;
+        }
+        aXd->mSource.onblk = aBytesRead;
+        aXd->mSource.curblkno = aXd->mSource.getblkno;
+        break; 
+      }
+      case XD3_GOTHEADER:
+      case XD3_WINSTART:
+      case XD3_WINFINISH:
+        break;
+      default:
+        aXd->mErrType = eErrXd;
+        aXd->mXdeltaErr = aXd->mStream.msg;
         xd3_close_stream(&aXd->mStream);
         xd3_free_stream(&aXd->mStream);
         return;
       }
-      aXd->mSource.onblk = aBytesRead;
-      aXd->mSource.curblkno = aXd->mSource.getblkno;
-      goto process;  
-    }
-    case XD3_GOTHEADER:
-    case XD3_WINSTART:
-    case XD3_WINFINISH:
-      goto process;
-    default:
-      aXd->mErrType = eErrXd;
-      aXd->mXdeltaErr = aXd->mStream.msg;
-      xd3_close_stream(&aXd->mStream);
-      xd3_free_stream(&aXd->mStream);
-      return;
-    }
-
+    } while (!aRead);
   } while (aInputBufRead == XD3_ALLOCSIZE);
 
   xd3_close_stream(&aXd->mStream);
