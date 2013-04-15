@@ -21,7 +21,7 @@ public:
 protected:
 
   XdeltaDiff(int s, int d)
-    : ObjectWrap(), mBusy(false), mSrc(s), mDst(d), mCallbackSet(false), mFirstTime(true), mFinishedProcessing(false),
+    : ObjectWrap(), mBusy(false), mSrc(s), mDst(d), mFirstTime(true), mFinishedProcessing(false),
     mDiffBuffMemSize(0), mDiffBuffReadMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mReadDstN(0), mErrType(eErrNone)
   {
     memset (&mStream, 0, sizeof (mStream));
@@ -43,7 +43,6 @@ protected:
 
   int mSrc, mDst;
   Persistent<Function> mCallback;
-  bool mCallbackSet;
 
   bool mFirstTime;
   bool mFinishedProcessing;
@@ -133,10 +132,8 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
     aXd->mDiffBuff = new char[aXd->mDiffBuffReadMaxSize];
   }
    
-  if (aXd->mCallbackSet)
-    aXd->mCallback.Dispose();
+  aXd->mCallback.Dispose();
   aXd->mCallback = Persistent<Function>::New(Local<Function>::Cast(args[1]));
-  aXd->mCallbackSet = true;
 
   aXd->StartAsync();
 
