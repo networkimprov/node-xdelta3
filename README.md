@@ -17,7 +17,7 @@ return a writable stream
 # USAGE
 
 ``` js
-var aDelta = xdelta3.diff(src, dst);
+var aDelta = new xdelta3.DiffStream(src, dst);
 aDelta.on('data', function(bufferChunk) {
   console.log('chunk of diff received');
 });
@@ -28,7 +28,7 @@ aDelta.on('error', function(err) {
   console.log('error: ' + err);
 });
 
-var aPatch = xdelta3.patchFile(src, dst, function(err){ console.log('done'); });
+var aPatch = new xdelta3.PatchStream(src, dst);
 for (var N = 0; N < aDiffBufferChunks.length; N++)
   aPatch.write(aDiffBufferChunks[i]);
 aPatch.end();

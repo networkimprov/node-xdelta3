@@ -1,6 +1,6 @@
 module.exports = {
   DiffStream: DiffStream,
-  patchFile: patchFile
+  PatchStream: PatchStream
 };
 
 var stream = require('stream');
@@ -22,14 +22,9 @@ DiffStream.prototype._read = function(size) {
   });
 };
 
-function PatchStream(patchObj) { stream.Writable.call(this); this.patchObj = patchObj; }
+function PatchStream(src, dst) { stream.Writable.call(this); this.patchObj = new xdelta.XdeldaPatch(src, dst); }
 util.inherits(PatchStream, stream.Writable);
 PatchStream.prototype._write = function (chunk, encoding, callback) {
-  //TODO: call C++ method which processes a diff chunk
+  this.diffObj.patch_chunked(chunk, callback);
 }
 
-function patchFile(src, dst) {
-  var aPatchObj = {};
-  var aWritableStream = PatchStream(aPatchObj);
-  return aWritableStream;
-}
