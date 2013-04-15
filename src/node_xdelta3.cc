@@ -140,8 +140,7 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
   if (aXd->mBusy)
     return ThrowException(Exception::TypeError(String::New("object busy with async op")));
 
-
-  aXd->mDiffBuffMaxSize = args[0]->Uint32Value();
+  aXd->mDiffBuffMaxSize = args[0]->Uint32Value(); //fix move to XdeltaOp function
   if (aXd->mDiffBuffMaxSize > aXd->mDiffBuffMemSize) {
     if (aXd->mDiffBuffMemSize != 0) delete[] aXd->mDiffBuff;
     aXd->mDiffBuffMemSize = aXd->mDiffBuffMaxSize;
@@ -203,14 +202,14 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 
   Local<Object> aBuffer = args[0]->ToObject();
 
-  aXd->mDiffBuffMaxSize = Buffer::Length(aBuffer);
+  aXd->mDiffBuffMaxSize = Buffer::Length(aBuffer); //fix move to XdeltaOp function
   if (aXd->mDiffBuffMaxSize > aXd->mDiffBuffMemSize) {
     if (aXd->mDiffBuffMemSize != 0) delete[] aXd->mDiffBuff;
     aXd->mDiffBuffMemSize = aXd->mDiffBuffMaxSize;
     aXd->mDiffBuff = new char[aXd->mDiffBuffMaxSize];
   }
 
-  memcpy(aXd->mDiffBuff, Buffer::Data(aBuffer), aXd->mDiffBuffMaxSize);
+  memcpy(aXd->mDiffBuff, Buffer::Data(aBuffer), aXd->mDiffBuffMaxSize); //fix can mDiffBuff point into Buffer member?
    
   aXd->mCallback.Dispose();
   aXd->mCallback = Persistent<Function>::New(Local<Function>::Cast(args[1]));
@@ -291,7 +290,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
       int aRet = xd3_encode_input(&aXd->mStream);
       switch (aRet) {
       case XD3_INPUT:
-        aRead = true;
+        aRead = true; //fix move contents of if(aRead) here?
         break;
       case XD3_OUTPUT: {
         if (aXd->mOpType == eOpDiff) {
@@ -315,7 +314,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
           if (aBytesRead < 0) {
           aXd->mErrType = eErrUv;
           aXd->mUvErr = uv_last_error(uv_default_loop());
-          xd3_close_stream(&aXd->mStream);
+          xd3_close_stream(&aXd->mStream); //fix let end of function cleanup
           xd3_free_stream(&aXd->mStream);
           return;
         }
@@ -330,18 +329,17 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
       default:
         aXd->mErrType = eErrXd;
         aXd->mXdeltaErr = aXd->mStream.msg;
-        xd3_close_stream(&aXd->mStream);
+        xd3_close_stream(&aXd->mStream); //fix let end of function cleanup
         xd3_free_stream(&aXd->mStream);
         return;
       }
-    } while (!aRead);
+    } while (!aRead); //fix inner loop not required; test other conditions in main while()
   } while (aInputBufRead == XD3_ALLOCSIZE);
 
   xd3_close_stream(&aXd->mStream);
   xd3_free_stream(&aXd->mStream);
 
   aXd->mFinishedProcessing = true;
-
 }
 
 void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
