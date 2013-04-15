@@ -30,13 +30,15 @@ protected:
     delete[] (char*)mInputBuf;
     if (mDiffBuff) delete[] mDiffBuff;
   }
-  void StartAsync() {
+  void StartAsync(Handle<Value> fn) {
     mBusy = true;
     Ref();
+    mCallback = Persistent<Function>::New(Local<Function>::Cast(fn)
   }
   void FinishAsync() {
-    mBusy = false;
+    mCallback.Dispose();
     Unref();
+    mBusy = false;
   }
 
   static void OpChunked_pool(uv_work_t* req);
@@ -146,13 +148,10 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
     aXd->mDiffBuffMemSize = aXd->mDiffBuffMaxSize;
     aXd->mDiffBuff = new char[aXd->mDiffBuffMaxSize];
   }
-   
-  aXd->mCallback.Dispose();
-  aXd->mCallback = Persistent<Function>::New(Local<Function>::Cast(args[1]));
 
-  aXd->StartAsync();
+  aXd->StartAsync(args[1]);
 
-  uv_work_t* aReq = new uv_work_t();
+  uv_work_t* aReq = new uv_work_t;
   aReq->data = aXd;
 
   uv_queue_work(uv_default_loop(), aReq, OpChunked_pool, OpChunked_done);
@@ -208,15 +207,11 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
     aXd->mDiffBuffMemSize = aXd->mDiffBuffMaxSize;
     aXd->mDiffBuff = new char[aXd->mDiffBuffMaxSize];
   }
-
   memcpy(aXd->mDiffBuff, Buffer::Data(aBuffer), aXd->mDiffBuffMaxSize); //fix can mDiffBuff point into Buffer member?
-   
-  aXd->mCallback.Dispose();
-  aXd->mCallback = Persistent<Function>::New(Local<Function>::Cast(args[1]));
 
-  aXd->StartAsync();
+  aXd->StartAsync(args[1]);
 
-  uv_work_t* aReq = new uv_work_t();
+  uv_work_t* aReq = new uv_work_t;
   aReq->data = aXd;
 
   uv_queue_work(uv_default_loop(), aReq, OpChunked_pool, OpChunked_done);
