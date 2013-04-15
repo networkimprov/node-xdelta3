@@ -9,7 +9,7 @@ src - original file
 dst - file to generate diff with  
 creates a readable stream  
 
-**xdelta3.patchFile(fd src, fd dest);**  
+**xdelta3.PatchStream(fd src, fd dest);**  
 src - original file  
 dest - file generated from diff  
 creates a writable stream  
