@@ -162,6 +162,8 @@ void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
     if (aBytesRead < 0) {
       aXd->mErrType = eErrUv;
       aXd->mUvErr = uv_last_error(uv_default_loop());
+      xd3_close_stream(&aXd->mStream);
+      xd3_free_stream(&aXd->mStream);
       return;
     }
     aXd->mSource.onblk = aBytesRead;
@@ -229,6 +231,8 @@ void XdeltaDiff::DiffChunked_pool(uv_work_t* req) {
       if (aBytesRead < 0) {
         aXd->mErrType = eErrUv;
         aXd->mUvErr = uv_last_error(uv_default_loop());
+        xd3_close_stream(&aXd->mStream);
+        xd3_free_stream(&aXd->mStream);
         return;
       }
       aXd->mSource.onblk = aBytesRead;
