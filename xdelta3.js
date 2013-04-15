@@ -1,5 +1,5 @@
 module.exports = {
-  diff: diff,
+  DiffStream: DiffStream,
   patchFile: patchFile
 };
 
@@ -8,7 +8,7 @@ var util = require('util');
 var xdelta = require('./build/Release/node_xdelta3.node');
 
 
-function DiffStream(diffObj) { stream.Readable.call(this); this.diffObj = diffObj; }
+function DiffStream(src, dst) { stream.Readable.call(this); this.diffObj = new xdelta.XdeldaDiff(src, dst); }
 util.inherits(DiffStream, stream.Readable);
 DiffStream.prototype._read = function(size) {
   var aThis = this;
@@ -21,12 +21,6 @@ DiffStream.prototype._read = function(size) {
       aThis.push(null);
   });
 };
-
-function diff(src, dst) {
-  var aDiffObj = new xdelta.XdeldaDiff(src, dst);
-  var aStream = new DiffStream(aDiffObj);
-  return aStream;
-}
 
 function PatchStream(patchObj) { stream.Writable.call(this); this.patchObj = patchObj; }
 util.inherits(PatchStream, stream.Writable);

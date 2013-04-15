@@ -7,7 +7,7 @@ var aDstFd = fs.openSync(path.resolve(__dirname, 'files/txt1dst'), 'r');
 
 var aDiffBufferList = [];
 
-var aDelta = lXdelta3.diff(aSrcFd, aDstFd);
+var aDelta = new lXdelta3.DiffStream(aSrcFd, aDstFd);
 aDelta.on('error', function(err) { throw err; });
 aDelta.on('data', function(bufferChunk) {
   aDiffBufferList.push(bufferChunk);
