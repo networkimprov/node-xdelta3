@@ -12,15 +12,11 @@ using namespace v8;
 using namespace node;
 
 
-class XdeltaDiff : public ObjectWrap {
-
-public:
-  static Persistent<FunctionTemplate> constructor_template;
-  static void Init(Handle<Object> target);
+class XdeltaOp : public ObjectWrap {
 
 protected:
 
-  XdeltaDiff(int s, int d)
+  XdeltaOp(int s, int d)
     : ObjectWrap(), mBusy(false), mSrc(s), mDst(d), mFirstTime(true), mFinishedProcessing(false),
     mDiffBuffMemSize(0), mDiffBuffReadMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mReadDstN(0), mErrType(eErrNone)
   {
@@ -31,13 +27,11 @@ protected:
     mSource.curblk = (const uint8_t*) new char[mSource.blksize];
     mInputBuf = (void*) new char[mSource.blksize];
   };
-  ~XdeltaDiff() {
+  virtual ~XdeltaOp() {
     delete[] (char*)mSource.curblk;
     delete[] (char*)mInputBuf;
     if (mDiffBuff) delete[] mDiffBuff;
   }
-
-  static Handle<Value> New(const Arguments& args);
 
   bool mBusy;
 
@@ -71,6 +65,20 @@ protected:
     mBusy = false;
     Unref();
   }
+
+};
+
+class XdeltaDiff : public XdeltaOp {
+
+public:
+  static Persistent<FunctionTemplate> constructor_template;
+  static void Init(Handle<Object> target);
+
+protected:
+
+  XdeltaDiff(int s, int d) : XdeltaOp(s, d) {};
+
+  static Handle<Value> New(const Arguments& args);
 
   static Handle<Value> DiffChunked(const Arguments& args);
   static void DiffChunked_pool(uv_work_t* req);
