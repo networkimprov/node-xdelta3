@@ -14,7 +14,7 @@ aPatch.end();
 aPatch.on('close', function() {
   fs.closeSync(aSrcFd);
   fs.closeSync(aDstFd);
-  if (fs.readFileSync(path.resolve(__dirname, 'files/txt1dst')) == fs.readFileSync(path.resolve(__dirname, 'files/txt1result')))
+  if (fs.readFileSync(path.resolve(__dirname, 'files/txt1dst')).toString() == fs.readFileSync(path.resolve(__dirname, 'files/txt1result')).toString())
     console.log('OK:   Basic Patch');
   else
     console.log('FAIL: Basic Patch');

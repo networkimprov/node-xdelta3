@@ -16,7 +16,7 @@ class XdeltaOp : public ObjectWrap {
 protected:
   XdeltaOp(int s, int d, int op)
   : ObjectWrap(), mOpType((OpType)op), mSrc(s), mDst(d), mBusy(false), mFirstTime(true), mFinishedProcessing(false),
-    mDiffBuffMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mReadDstN(0), mErrType(eErrNone)
+    mDiffBuffMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mInputBufRead(0), mReadDstN(0), mErrType(eErrNone)
   {
     memset (&mStream, 0, sizeof (mStream));
     memset (&mSource, 0, sizeof (mSource));
@@ -40,7 +40,7 @@ protected:
     Unref();
     mBusy = false;
   }
-  int Read(int fd, void* buf, size_t size, size_t offset) { //fix verify
+  int Read(int fd, void* buf, size_t size, size_t offset) {
     uv_fs_t aUvReq;
     int aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, fd, buf, size, offset, NULL);
     if (aBytesRead < 0) {
@@ -48,6 +48,16 @@ protected:
       mUvErr = uv_last_error(uv_default_loop());
     }
     return aBytesRead;
+  }
+
+  int Write(int fd, void* buf, size_t size, size_t offset) { 
+    uv_fs_t aUvReq;
+    int aBytesWrote = uv_fs_write(uv_default_loop(), &aUvReq, fd, buf, size, offset, NULL);
+    if (aBytesWrote != size) {
+      mErrType = eErrUv;
+      mUvErr = uv_last_error(uv_default_loop());
+    }
+    return aBytesWrote - size;
   }
 
   static void OpChunked_pool(uv_work_t* req);
@@ -67,6 +77,7 @@ protected:
   unsigned mWroteFromStream; //fix unsigned int or size_t
 
   void* mInputBuf;
+  int mInputBufRead;
   int mReadDstN;
   xd3_stream mStream;
   xd3_config mConfig;
@@ -198,26 +209,31 @@ Handle<Value> XdeltaPatch::New(const Arguments& args) {
 Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
   HandleScope scope;
 
-  if (args.Length() < 2 || !Buffer::HasInstance(args[0]) || !args[1]->IsFunction())
-    return ThrowException(Exception::TypeError(String::New("arguments are (buffer, function)")));
+  if (!((args.Length() == 1 && args[0]->IsFunction()) || (args.Length() >= 2 && Buffer::HasInstance(args[0]) && args[1]->IsFunction())))
+    return ThrowException(Exception::TypeError(String::New("arguments are ([buffer], function)")));
 
   XdeltaPatch* aXd = ObjectWrap::Unwrap<XdeltaPatch>(args.This());
 
   if (aXd->mBusy)
     return ThrowException(Exception::TypeError(String::New("object busy with async op")));
 
-  Local<Object> aBuffer = args[0]->ToObject();
+  if (args.Length() == 1) {
+    aXd->mDiffBuffMaxSize = 0;
+    aXd->StartAsync(args[0]);
+  } else {
+    Local<Object> aBuffer = args[0]->ToObject();
 
-  int aSize = Buffer::Length(aBuffer); //fix move to XdeltaOp function
-  if (aSize > aXd->mDiffBuffMaxSize) {
-    if (aXd->mDiffBuffMaxSize != 0)
-      delete[] aXd->mDiffBuff;
-    aXd->mDiffBuffMaxSize = aSize;
-    aXd->mDiffBuff = new char[aXd->mDiffBuffMaxSize];
+    int aSize = Buffer::Length(aBuffer); //fix move to XdeltaOp function
+    if (aSize > aXd->mDiffBuffMaxSize) {
+      if (aXd->mDiffBuffMaxSize != 0)
+        delete[] aXd->mDiffBuff;
+      aXd->mDiffBuffMaxSize = aSize;
+      aXd->mDiffBuff = new char[aXd->mDiffBuffMaxSize];
+    }
+    memcpy(aXd->mDiffBuff, Buffer::Data(aBuffer), aXd->mDiffBuffMaxSize); //fix can mDiffBuff point into Buffer member?
+
+    aXd->StartAsync(args[1]);
   }
-  memcpy(aXd->mDiffBuff, Buffer::Data(aBuffer), aXd->mDiffBuffMaxSize); //fix can mDiffBuff point into Buffer member?
-
-  aXd->StartAsync(args[1]);
 
   uv_work_t* aReq = new uv_work_t;
   aReq->data = aXd;
@@ -229,7 +245,11 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 
 void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
-  aXd->mDiffBuffSize = 0;
+
+  if (aXd->mOpType == eOpDiff)
+    aXd->mDiffBuffSize = 0;
+  else
+    aXd->mDiffBuffSize = aXd->mDiffBuffMaxSize;
 
   if (aXd->mFirstTime) {
     xd3_init_config(&aXd->mConfig, XD3_ADLER32);
@@ -243,7 +263,6 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     }
     aXd->mSource.onblk = aBytesRead;
     aXd->mSource.curblkno = 0;
-
     xd3_set_source(&aXd->mStream, &aXd->mSource);
   }
 
@@ -260,29 +279,40 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   if (aXd->mFinishedProcessing)
     return;
 
-  int aInputBufRead = 0;
+
   bool aRead = aXd->mFirstTime || aXd->mOpType == eOpPatch;
   aXd->mFirstTime = false;
   do {
     if (aRead) {
       aRead = false;
       if (aXd->mOpType == eOpDiff) {
-        aInputBufRead = aXd->Read(aXd->mDst, aXd->mInputBuf, XD3_ALLOCSIZE, aXd->mReadDstN * XD3_ALLOCSIZE);
+        aXd->mInputBufRead = aXd->Read(aXd->mDst, aXd->mInputBuf, XD3_ALLOCSIZE, aXd->mReadDstN * XD3_ALLOCSIZE);
         aXd->mReadDstN++;
-        if (aInputBufRead < 0)
+        if (aXd->mInputBufRead < 0)
           return;
-        if (aInputBufRead < (int) XD3_ALLOCSIZE)
-          xd3_set_flags(&aXd->mStream, XD3_FLUSH | aXd->mStream.flags);
-        xd3_avail_input(&aXd->mStream, (const uint8_t*) aXd->mInputBuf, aInputBufRead);
       } else {
-        //TODO: read from mDiffBuff
-        
+        if (aXd->mDiffBuffSize != 0) {
+          int aReadSize = (aXd->mDiffBuffSize < XD3_ALLOCSIZE - aXd->mInputBufRead) ? aXd->mDiffBuffSize : XD3_ALLOCSIZE - aXd->mInputBufRead;
+          if (aReadSize != 0) {
+            memcpy(aXd->mInputBuf + aXd->mInputBufRead, aXd->mDiffBuff + aXd->mDiffBuffMaxSize - aXd->mDiffBuffSize, aReadSize);
+            aXd->mDiffBuff -= aReadSize;
+            aXd->mInputBufRead += aReadSize;
+          }
+          if (aXd->mInputBufRead != XD3_ALLOCSIZE || aXd->mDiffBuffSize == 0)
+            return;
+        }
       }
-
+      if (aXd->mInputBufRead < (int) XD3_ALLOCSIZE)
+        xd3_set_flags(&aXd->mStream, XD3_FLUSH | aXd->mStream.flags);
+      xd3_avail_input(&aXd->mStream, (const uint8_t*) aXd->mInputBuf, aXd->mInputBufRead);
     }
 
     do {
-      int aRet = xd3_encode_input(&aXd->mStream);
+      int aRet; 
+      if (aXd->mOpType == eOpDiff)
+        aRet = xd3_encode_input(&aXd->mStream);
+      else
+        aRet = xd3_decode_input(&aXd->mStream);
       switch (aRet) {
       case XD3_INPUT:
         aRead = true; //fix move contents of if(aRead) here?
@@ -293,12 +323,14 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
           memcpy(aXd->mDiffBuff + aXd->mDiffBuffSize, aXd->mStream.next_out, aWriteSize);
           aXd->mDiffBuffSize += aWriteSize;
           aXd->mWroteFromStream = aWriteSize;
- 
           if (aXd->mWroteFromStream < aXd->mStream.avail_out) //diff buffer is full
              return;
           xd3_consume_output(&aXd->mStream);
         } else {
-          //TODO: write to file
+          if (aXd->Write(aXd->mDst, aXd->mStream.next_out, (int)aXd->mStream.avail_out, aXd->mReadDstN) < 0)
+            return;
+          aXd->mReadDstN += (int)aXd->mStream.avail_out;
+          xd3_consume_output(&aXd->mStream);
         }
         break;
       }
@@ -325,7 +357,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         return;
       }
     } while (!aRead); //fix inner loop not required; test other conditions in main while()
-  } while (aInputBufRead == XD3_ALLOCSIZE);
+  } while (aXd->mInputBufRead == XD3_ALLOCSIZE);
 
   xd3_close_stream(&aXd->mStream);
   xd3_free_stream(&aXd->mStream);

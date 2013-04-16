@@ -37,5 +37,5 @@ PatchStream.prototype._write = function (chunk, encoding, callback) {
   this.patchObj.patchChunked(chunk, callback);
 }
 PatchStream.prototype._end = function (callback) {
-  callback();
+  this.patchObj.patchChunked(callback);
 }
