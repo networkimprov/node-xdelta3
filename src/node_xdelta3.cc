@@ -53,31 +53,29 @@ protected:
   static void OpChunked_pool(uv_work_t* req);
   static void OpChunked_done(uv_work_t* req, int );
 
-  bool mBusy;
-
   enum { eOpDiff, eOpPatch } mOpType;
-
   int mSrc, mDst;
   Persistent<Function> mCallback;
+  bool mBusy;
 
-  bool mFirstTime;
+  bool mFirstTime; //fix replace these with enum { eStart, eRun, eDone } mState;
   bool mFinishedProcessing;
+  
   int mDiffBuffMemSize;
   int mDiffBuffMaxSize;
   char* mDiffBuff;
   int mDiffBuffSize;
-  unsigned mWroteFromStream;
+  unsigned mWroteFromStream; //fix unsigned int or size_t
+
+  void* mInputBuf;
   int mReadDstN;
+  xd3_stream mStream;
+  xd3_config mConfig;
+  xd3_source mSource;
 
   enum { eErrNone, eErrUv, eErrXd } mErrType;
   uv_err_t mUvErr;
   std::string mXdErr;
-
-  struct stat mStatbuf;
-  void* mInputBuf;
-  xd3_stream mStream;
-  xd3_config mConfig;
-  xd3_source mSource;
 };
 
 class XdeltaDiff : public XdeltaOp {
