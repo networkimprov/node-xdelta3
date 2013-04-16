@@ -40,6 +40,15 @@ protected:
     Unref();
     mBusy = false;
   }
+  int Read(int fd, void* buf, size_t size, size_t offset) { //fix verify
+    uv_fs_t aUvReq;
+    int aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, fd, buf, size, offset, NULL);
+    if (aBytesRead < 0) {
+      mErrType = eErrUv;
+      mUvErr = uv_last_error(uv_default_loop());
+    }
+    return aBytesRead;
+  }
 
   static void OpChunked_pool(uv_work_t* req);
   static void OpChunked_done(uv_work_t* req, int );
@@ -227,7 +236,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     xd3_init_config(&aXd->mConfig, XD3_ADLER32);
     xd3_config_stream(&aXd->mStream, &aXd->mConfig);
 
-    uv_fs_t aUvReq;
+    uv_fs_t aUvReq; //fix call aXd->read()
     int aBytesRead;
     aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mSrc, (void*)aXd->mSource.curblk, aXd->mSource.blksize, 0, NULL);
     if (aBytesRead < 0) {
@@ -263,7 +272,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     if (aRead) {
       aRead = false;
       if (aXd->mOpType == eOpDiff) {
-        uv_fs_t aUvReq;
+        uv_fs_t aUvReq; //fix call aXd->read()
         aInputBufRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mDst, aXd->mInputBuf, XD3_ALLOCSIZE, aXd->mReadDstN * XD3_ALLOCSIZE, NULL);
         aXd->mReadDstN++;
         if (aInputBufRead < 0) {
@@ -303,7 +312,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         break;
       }
       case XD3_GETSRCBLK: {
-        uv_fs_t aUvReq;
+        uv_fs_t aUvReq; //fix call aXd->read()
         int aBytesRead;
         aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno, NULL);
         if (aBytesRead < 0) {
