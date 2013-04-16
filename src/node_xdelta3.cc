@@ -301,11 +301,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     }
 
     do {
-      int aRet; 
-      if (aXd->mOpType == eOpDiff)
-        aRet = xd3_encode_input(&aXd->mStream);
-      else
-        aRet = xd3_decode_input(&aXd->mStream);
+      int aRet = aXd->mOpType == eOpDiff ? xd3_encode_input(&aXd->mStream) : xd3_decode_input(&aXd->mStream);
       switch (aRet) {
       case XD3_INPUT:
         aRead = true; //fix move contents of if(aRead) here?
