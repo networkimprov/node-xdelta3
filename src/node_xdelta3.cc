@@ -14,8 +14,9 @@ using namespace node;
 
 class XdeltaOp : public ObjectWrap {
 protected:
-  XdeltaOp(int s, int d, int op)
-  : ObjectWrap(), mOpType((OpType)op), mSrc(s), mDst(d), mBusy(false), mFirstTime(true), mFinishedProcessing(false),
+  enum OpType { eOpDiff, eOpPatch };
+  XdeltaOp(int s, int d, OpType op)
+  : ObjectWrap(), mOpType(op), mSrc(s), mDst(d), mBusy(false), mFirstTime(true), mFinishedProcessing(false),
     mDiffBuffMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mInputBufRead(0), mConsumedInput(false), mReadDstN(0), mErrType(eErrNone)
   {
     memset (&mStream, 0, sizeof (mStream));
@@ -61,7 +62,7 @@ protected:
   static void OpChunked_pool(uv_work_t* req);
   static void OpChunked_done(uv_work_t* req, int );
 
-  enum OpType { eOpDiff, eOpPatch } mOpType;
+  OpType mOpType;
   int mSrc, mDst;
   Persistent<Function> mCallback;
   bool mBusy;
