@@ -15,7 +15,7 @@ using namespace node;
 class XdeltaOp : public ObjectWrap {
 protected:
   XdeltaOp(int s, int d, int op)
-  : ObjectWrap(), mSrc(s), mDst(d), mOpType(op), mBusy(false), mFirstTime(true), mFinishedProcessing(false),
+  : ObjectWrap(), mOpType((OpType)op), mSrc(s), mDst(d), mBusy(false), mFirstTime(true), mFinishedProcessing(false),
     mDiffBuffMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mReadDstN(0), mErrType(eErrNone)
   {
     memset (&mStream, 0, sizeof (mStream));
@@ -30,13 +30,13 @@ protected:
     delete[] (char*)mInputBuf;
     if (mDiffBuff) delete[] mDiffBuff;
   }
-  void StartAsync(Handle<Value> fn) {
+  void StartAsync(Local<Value> fn) {
     mBusy = true;
     Ref();
+    mCallback.Dispose();
     mCallback = Persistent<Function>::New(Local<Function>::Cast(fn));
   }
   void FinishAsync() {
-    mCallback.Dispose();
     Unref();
     mBusy = false;
   }
@@ -53,7 +53,7 @@ protected:
   static void OpChunked_pool(uv_work_t* req);
   static void OpChunked_done(uv_work_t* req, int );
 
-  enum { eOpDiff, eOpPatch } mOpType;
+  enum OpType { eOpDiff, eOpPatch } mOpType;
   int mSrc, mDst;
   Persistent<Function> mCallback;
   bool mBusy;
@@ -117,9 +117,9 @@ void XdeltaDiff::Init(Handle<Object> target) {
 
   constructor_template = Persistent<FunctionTemplate>::New(t);
   constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  constructor_template->SetClassName(String::NewSymbol("XdeltaDiff")); //fix class name in JS
+  constructor_template->SetClassName(String::NewSymbol("XdeltaDiff"));
 
-  NODE_SET_PROTOTYPE_METHOD(constructor_template, "diffChunked", DiffChunked); //fix method name in JS
+  NODE_SET_PROTOTYPE_METHOD(constructor_template, "diffChunked", DiffChunked);
 
   target->Set(String::NewSymbol("XdeltaDiff"), constructor_template->GetFunction());
 }
@@ -175,9 +175,9 @@ void XdeltaPatch::Init(Handle<Object> target) {
 
   constructor_template = Persistent<FunctionTemplate>::New(t);
   constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  constructor_template->SetClassName(String::NewSymbol("XdeltaPatch")); //fix class name in JS
+  constructor_template->SetClassName(String::NewSymbol("XdeltaPatch"));
 
-  NODE_SET_PROTOTYPE_METHOD(constructor_template, "patchChunked", PatchChunked); //fix method name in JS
+  NODE_SET_PROTOTYPE_METHOD(constructor_template, "patchChunked", PatchChunked);
 
   target->Set(String::NewSymbol("XdeltaPatch"), constructor_template->GetFunction());
 }
@@ -234,7 +234,17 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   if (aXd->mFirstTime) {
     xd3_init_config(&aXd->mConfig, XD3_ADLER32);
     xd3_config_stream(&aXd->mStream, &aXd->mConfig);
-    xd3_set_source(&aXd->mStream, &aXd->mSource); //fix verify that read not necessary before this
+    
+    int aBytesRead = aXd->Read(aXd->mSrc, (void*)aXd->mSource.curblk, aXd->mSource.blksize, 0);
+    if (aBytesRead < 0) {
+      xd3_close_stream(&aXd->mStream);
+      xd3_free_stream(&aXd->mStream);  //fix let end of function cleanup
+      return;
+    }
+    aXd->mSource.onblk = aBytesRead;
+    aXd->mSource.curblkno = 0;
+
+    xd3_set_source(&aXd->mStream, &aXd->mSource);
   }
 
   if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to emit for a readable buffer
@@ -257,14 +267,10 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     if (aRead) {
       aRead = false;
       if (aXd->mOpType == eOpDiff) {
-        uv_fs_t aUvReq; //fix call aXd->read()
-        aInputBufRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mDst, aXd->mInputBuf, XD3_ALLOCSIZE, aXd->mReadDstN * XD3_ALLOCSIZE, NULL);
+        aInputBufRead = aXd->Read(aXd->mDst, aXd->mInputBuf, XD3_ALLOCSIZE, aXd->mReadDstN * XD3_ALLOCSIZE);
         aXd->mReadDstN++;
-        if (aInputBufRead < 0) {
-          aXd->mErrType = eErrUv;
-          aXd->mUvErr = uv_last_error(uv_default_loop());
+        if (aInputBufRead < 0)
           return;
-        }
         if (aInputBufRead < (int) XD3_ALLOCSIZE)
           xd3_set_flags(&aXd->mStream, XD3_FLUSH | aXd->mStream.flags);
         xd3_avail_input(&aXd->mStream, (const uint8_t*) aXd->mInputBuf, aInputBufRead);
@@ -297,12 +303,8 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         break;
       }
       case XD3_GETSRCBLK: {
-        uv_fs_t aUvReq; //fix call aXd->read()
-        int aBytesRead;
-        aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno, NULL);
+        int aBytesRead = aXd->Read(aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno);
         if (aBytesRead < 0) {
-          aXd->mErrType = eErrUv;
-          aXd->mUvErr = uv_last_error(uv_default_loop());
           xd3_close_stream(&aXd->mStream); //fix let end of function cleanup
           xd3_free_stream(&aXd->mStream);
           return;
@@ -345,14 +347,14 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
     aArgc = 0;
   } else {
     aArgv[0] = Undefined();
-    aArgv[1] = Buffer::New(aXd->mDiffBuff, aXd->mDiffBuffSize); //fix verify this
+    aArgv[1] = node::Buffer::New(aXd->mDiffBuff, aXd->mDiffBuffSize)->handle_;
   }
+  aXd->FinishAsync();
   TryCatch try_catch;
   aXd->mCallback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
   if (try_catch.HasCaught())
     FatalException(try_catch);
 
-  aXd->FinishAsync();
   delete req;
 }
 
