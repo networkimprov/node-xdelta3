@@ -33,6 +33,7 @@ protected:
   void StartAsync(Local<Value> fn) {
     mBusy = true;
     Ref();
+    mCallback.Dispose(); //fix properly dispose somewhere else
     mCallback = Persistent<Function>::New(Local<Function>::Cast(fn));
   }
   void FinishAsync() {
@@ -383,7 +384,6 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
   aXd->FinishAsync();
   TryCatch try_catch;
   aXd->mCallback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
-  aXd->mCallback.Dispose();
   if (try_catch.HasCaught())
     FatalException(try_catch);
 
