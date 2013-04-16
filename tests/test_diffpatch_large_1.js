@@ -21,8 +21,33 @@ aDelta.on('end', function() {
   var aDiff = Buffer.concat(aDiffBufferList);
   fs.closeSync(aSrcFd);
   fs.closeSync(aDstFd);
-  if (aDiff.length == 630125)
-    console.log('OK:   Basic Large Diff');
-  else
+  if (aDiff.length != 630125)
     console.log('FAIL: Basic Large Diff');
+  else {
+    console.log('OK:   Basic Large Diff');
+
+    var aSrcFd2 = fs.openSync(path.resolve(__dirname, 'files/txt1src'), 'r');
+    var aDstFd2 = fs.openSync(path.resolve(__dirname, 'files/txt1result'), 'w');
+
+    var aPatch = new lXdelta3.PatchStream(aSrcFd2, aDstFd2);
+
+    for (var N = 0; N < aDiffBufferList.length; N++)
+      aPatch.write(aDiffBufferList[N]);
+    aPatch.end();
+    aPatch.on('error', function(err) { console.log(err); });
+    aPatch.on('close', function() {
+      fs.closeSync(aSrcFd);
+      fs.closeSync(aDstFd);
+      if (aBuffer.toString() == fs.readFileSync(path.resolve(__dirname, 'files/txt1result')).toString())
+        console.log('OK:   Basic Large Patch');
+      else
+        console.log('FAIL: Basic Large Patch');
+    });
+
+  }
+
 });
+
+
+
+
