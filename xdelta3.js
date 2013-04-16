@@ -8,34 +8,41 @@ var util = require('util');
 var xdelta = require('./build/Release/node_xdelta3.node');
 
 
-function DiffStream(src, dst) { stream.Readable.call(this); this.diffObj = new xdelta.XdeltaDiff(src, dst); }
+function DiffStream(src, dst) {
+  stream.Readable.call(this);
+  this.diffObj = new xdelta.XdeltaDiff(src, dst);
+}
 util.inherits(DiffStream, stream.Readable);
+
 DiffStream.prototype._read = function(size) {
-  var aThis = this;
-  this.diffObj.diffChunked(size, function(err, data) {
+  var that = this;
+  that.diffObj.diffChunked(size, function(err, data) {
     if (err)
-      aThis.emit('error', err);
+      that.emit('error', err);
     else if (typeof(data) != 'undefined') 
-      aThis.push(data);
+      that.push(data);
     else
-      aThis.push(null);
+      that.push(null);
   });
 };
+
 
 function PatchStream(src, dst) {
   stream.Writable.call(this);
   this.patchObj = new xdelta.XdeltaPatch(src, dst);
   this.on('finish', function () { 
-    var aThis = this;
-    this._end(function() {
-      aThis.emit('close');
+    var that = this;
+    that._end(function() {
+      that.emit('close'); //fix stop the finish event from propagating, and then emit finish here?
     }); 
   });
 }
 util.inherits(PatchStream, stream.Writable);
-PatchStream.prototype._write = function (chunk, encoding, callback) {
+
+PatchStream.prototype._write = function (chunk, encoding, callback) { //fix callback is optional?
   this.patchObj.patchChunked(chunk, callback);
-}
+};
+
 PatchStream.prototype._end = function (callback) {
   this.patchObj.patchChunked(callback);
-}
+};
