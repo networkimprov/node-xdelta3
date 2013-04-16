@@ -235,21 +235,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   if (aXd->mFirstTime) {
     xd3_init_config(&aXd->mConfig, XD3_ADLER32);
     xd3_config_stream(&aXd->mStream, &aXd->mConfig);
-
-    uv_fs_t aUvReq; //fix call aXd->read()
-    int aBytesRead;
-    aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, aXd->mSrc, (void*)aXd->mSource.curblk, aXd->mSource.blksize, 0, NULL);
-    if (aBytesRead < 0) {
-      aXd->mErrType = eErrUv;
-      aXd->mUvErr = uv_last_error(uv_default_loop());
-      xd3_close_stream(&aXd->mStream);
-      xd3_free_stream(&aXd->mStream);
-      return;
-    }
-    aXd->mSource.onblk = aBytesRead;
-    aXd->mSource.curblkno = 0;
-
-    xd3_set_source(&aXd->mStream, &aXd->mSource);
+    xd3_set_source(&aXd->mStream, &aXd->mSource); //fix verify that read not necessary before this
   }
 
   if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to emit for a readable buffer
