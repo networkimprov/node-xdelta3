@@ -241,9 +241,9 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     xd3_config_stream(&aXd->mStream, &aXd->mConfig);
     
     int aBytesRead = aXd->Read(aXd->mSrc, (void*)aXd->mSource.curblk, aXd->mSource.blksize, 0);
-    if (aBytesRead < 0) {
+    if (aBytesRead < 0) { //fix way to make xd request this read with getsrcblk?
       xd3_close_stream(&aXd->mStream);
-      xd3_free_stream(&aXd->mStream);  //fix let end of function cleanup
+      xd3_free_stream(&aXd->mStream);  //fix config stream after read? would make cleanup unnecessary
       return;
     }
     aXd->mSource.onblk = aBytesRead;
