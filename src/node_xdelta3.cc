@@ -16,7 +16,7 @@ class XdeltaOp : public ObjectWrap {
 protected:
   XdeltaOp(int s, int d, int op)
   : ObjectWrap(), mOpType((OpType)op), mSrc(s), mDst(d), mBusy(false), mFirstTime(true), mFinishedProcessing(false),
-    mDiffBuffMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mInputBufRead(0), mReadDstN(0), mErrType(eErrNone)
+    mDiffBuffMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mInputBufRead(0), mConsumedInput(false), mReadDstN(0), mErrType(eErrNone)
   {
     memset (&mStream, 0, sizeof (mStream));
     memset (&mSource, 0, sizeof (mSource));
@@ -78,6 +78,7 @@ protected:
 
   void* mInputBuf;
   int mInputBufRead;
+  bool mConsumedInput;
   int mReadDstN;
   xd3_stream mStream;
   xd3_config mConfig;
@@ -250,7 +251,6 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     aXd->mDiffBuffSize = 0;
   else
     aXd->mDiffBuffSize = aXd->mDiffBuffMaxSize;
-
   if (aXd->mFirstTime) {
     xd3_init_config(&aXd->mConfig, XD3_ADLER32);
     xd3_config_stream(&aXd->mStream, &aXd->mConfig);
@@ -291,20 +291,25 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         if (aXd->mInputBufRead < 0)
           return;
       } else {
-        if (aXd->mDiffBuffSize != 0) {
+        if (aXd->mConsumedInput) {
+          aXd->mInputBufRead = 0;
+          aXd->mConsumedInput = false;
+        }
+        if (aXd->mInputBufRead != XD3_ALLOCSIZE && aXd->mDiffBuffSize != 0) {
           int aReadSize = (aXd->mDiffBuffSize < XD3_ALLOCSIZE - aXd->mInputBufRead) ? aXd->mDiffBuffSize : XD3_ALLOCSIZE - aXd->mInputBufRead;
           if (aReadSize != 0) {
             memcpy(aXd->mInputBuf + aXd->mInputBufRead, aXd->mDiffBuff + aXd->mDiffBuffMaxSize - aXd->mDiffBuffSize, aReadSize);
-            aXd->mDiffBuff -= aReadSize;
+            aXd->mDiffBuffSize -= aReadSize;
             aXd->mInputBufRead += aReadSize;
           }
-          if (aXd->mInputBufRead != XD3_ALLOCSIZE || aXd->mDiffBuffSize == 0)
+          if (aXd->mInputBufRead != XD3_ALLOCSIZE || aXd->mDiffBuffSize == 0) 
             return;
         }
       }
       if (aXd->mInputBufRead < (int) XD3_ALLOCSIZE)
         xd3_set_flags(&aXd->mStream, XD3_FLUSH | aXd->mStream.flags);
       xd3_avail_input(&aXd->mStream, (const uint8_t*) aXd->mInputBuf, aXd->mInputBufRead);
+      aXd->mConsumedInput = true;
     }
 
     do {
