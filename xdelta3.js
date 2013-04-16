@@ -22,9 +22,20 @@ DiffStream.prototype._read = function(size) {
   });
 };
 
-function PatchStream(src, dst) { stream.Writable.call(this); this.patchObj = new xdelta.XdeltaPatch(src, dst); }
+function PatchStream(src, dst) {
+  stream.Writable.call(this);
+  this.patchObj = new xdelta.XdeltaPatch(src, dst);
+  this.on('finish', function () { 
+    var aThis = this;
+    this._end(function() {
+      aThis.emit('close');
+    }); 
+  });
+}
 util.inherits(PatchStream, stream.Writable);
 PatchStream.prototype._write = function (chunk, encoding, callback) {
   this.patchObj.patchChunked(chunk, callback);
 }
-
+PatchStream.prototype._end = function (callback) {
+  callback();
+}

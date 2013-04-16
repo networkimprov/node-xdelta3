@@ -35,7 +35,7 @@ aPatch.end();
 aPatch.on('error', function(err) {
   console.log('error: ' + err);
 });
-aPatch.on('finish', function() {
+aPatch.on('close', function() {
   console.log('patch finished');
 });
 
