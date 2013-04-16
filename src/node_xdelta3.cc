@@ -213,10 +213,8 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 
   if (args.Length() == 1) {
     aXd->mDiffBuffMaxSize = 0;
-    aXd->StartAsync(Local<Function>::Cast(args[0]));
   } else {
     Local<Object> aBuffer = args[0]->ToObject();
-
     int aSize = Buffer::Length(aBuffer); //fix move to XdeltaOp function
     if (aSize > aXd->mDiffBuffMaxSize) {
       if (aXd->mDiffBuffMaxSize != 0)
@@ -225,9 +223,8 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
       aXd->mDiffBuff = new char[aXd->mDiffBuffMaxSize];
     }
     memcpy(aXd->mDiffBuff, Buffer::Data(aBuffer), aXd->mDiffBuffMaxSize); //fix can mDiffBuff point into Buffer member?
-
-    aXd->StartAsync(Local<Function>::Cast(args[1]));
   }
+  aXd->StartAsync(Local<Function>::Cast(args[args.Length()-1]));
 
   return args.This();
 }
