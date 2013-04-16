@@ -30,15 +30,13 @@ protected:
     delete[] (char*)mInputBuf;
     if (mDiffBuff) delete[] mDiffBuff;
   }
-  void StartAsync(Local<Value> fn) {
+  void StartAsync(Handle<Function> fn) {
+    mCallback = Persistent<Function>::New(fn);
     mBusy = true;
-    Ref();
-    mCallback.Dispose(); //fix properly dispose somewhere else
-    mCallback = Persistent<Function>::New(Local<Function>::Cast(fn));
-  }
-  void FinishAsync() {
-    Unref();
-    mBusy = false;
+    this->Ref();
+    uv_work_t* aReq = new uv_work_t;
+    aReq->data = this;
+    uv_queue_work(uv_default_loop(), aReq, OpChunked_pool, OpChunked_done);
   }
   int Read(int fd, void* buf, size_t size, size_t offset) {
     uv_fs_t aUvReq;
@@ -168,12 +166,7 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
     aXd->mDiffBuff = new char[aXd->mDiffBuffMaxSize];
   }
 
-  aXd->StartAsync(args[1]);
-
-  uv_work_t* aReq = new uv_work_t;
-  aReq->data = aXd;
-
-  uv_queue_work(uv_default_loop(), aReq, OpChunked_pool, OpChunked_done);
+  aXd->StartAsync(Local<Function>::Cast(args[1]));
 
   return args.This();
 }
@@ -220,7 +213,7 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 
   if (args.Length() == 1) {
     aXd->mDiffBuffMaxSize = 0;
-    aXd->StartAsync(args[0]);
+    aXd->StartAsync(Local<Function>::Cast(args[0]));
   } else {
     Local<Object> aBuffer = args[0]->ToObject();
 
@@ -233,13 +226,8 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
     }
     memcpy(aXd->mDiffBuff, Buffer::Data(aBuffer), aXd->mDiffBuffMaxSize); //fix can mDiffBuff point into Buffer member?
 
-    aXd->StartAsync(args[1]);
+    aXd->StartAsync(Local<Function>::Cast(args[1]));
   }
-
-  uv_work_t* aReq = new uv_work_t;
-  aReq->data = aXd;
-
-  uv_queue_work(uv_default_loop(), aReq, OpChunked_pool, OpChunked_done);
 
   return args.This();
 }
@@ -386,9 +374,13 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
     aArgv[0] = Undefined();
     aArgv[1] = node::Buffer::New(aXd->mDiffBuff, aXd->mDiffBuffSize)->handle_;
   }
-  aXd->FinishAsync();
+  aXd->Unref();
+  aXd->mBusy = false;
+  Local<Function> aCallback(aXd->mCallback);
+  aXd->mCallback.Dispose();
+  
   TryCatch try_catch;
-  aXd->mCallback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
+  aCallback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
   if (try_catch.HasCaught())
     FatalException(try_catch);
 
