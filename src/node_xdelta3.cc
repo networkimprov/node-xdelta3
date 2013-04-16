@@ -16,7 +16,7 @@ class XdeltaOp : public ObjectWrap {
 protected:
   XdeltaOp(int s, int d, int op)
   : ObjectWrap(), mSrc(s), mDst(d), mOpType(op), mBusy(false), mFirstTime(true), mFinishedProcessing(false),
-    mDiffBuffMemSize(0), mDiffBuffMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mReadDstN(0), mErrType(eErrNone)
+    mDiffBuffMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mReadDstN(0), mErrType(eErrNone)
   {
     memset (&mStream, 0, sizeof (mStream));
     memset (&mSource, 0, sizeof (mSource));
@@ -60,8 +60,7 @@ protected:
 
   bool mFirstTime; //fix replace these with enum { eStart, eRun, eDone } mState;
   bool mFinishedProcessing;
-  
-  int mDiffBuffMemSize;
+
   int mDiffBuffMaxSize;
   char* mDiffBuff;
   int mDiffBuffSize;
@@ -149,10 +148,11 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
   if (aXd->mBusy)
     return ThrowException(Exception::TypeError(String::New("object busy with async op")));
 
-  aXd->mDiffBuffMaxSize = args[0]->Uint32Value(); //fix move to XdeltaOp function
-  if (aXd->mDiffBuffMaxSize > aXd->mDiffBuffMemSize) {
-    if (aXd->mDiffBuffMemSize != 0) delete[] aXd->mDiffBuff;
-    aXd->mDiffBuffMemSize = aXd->mDiffBuffMaxSize;
+  int aSize = args[0]->Uint32Value(); //fix move to XdeltaOp function
+  if (aSize > aXd->mDiffBuffMaxSize) {
+    if (aXd->mDiffBuffMaxSize != 0)
+      delete[] aXd->mDiffBuff;
+    aXd->mDiffBuffMaxSize = aSize;
     aXd->mDiffBuff = new char[aXd->mDiffBuffMaxSize];
   }
 
@@ -208,10 +208,11 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 
   Local<Object> aBuffer = args[0]->ToObject();
 
-  aXd->mDiffBuffMaxSize = Buffer::Length(aBuffer); //fix move to XdeltaOp function
-  if (aXd->mDiffBuffMaxSize > aXd->mDiffBuffMemSize) {
-    if (aXd->mDiffBuffMemSize != 0) delete[] aXd->mDiffBuff;
-    aXd->mDiffBuffMemSize = aXd->mDiffBuffMaxSize;
+  int aSize = Buffer::Length(aBuffer); //fix move to XdeltaOp function
+  if (aSize > aXd->mDiffBuffMaxSize) {
+    if (aXd->mDiffBuffMaxSize != 0)
+      delete[] aXd->mDiffBuff;
+    aXd->mDiffBuffMaxSize = aSize;
     aXd->mDiffBuff = new char[aXd->mDiffBuffMaxSize];
   }
   memcpy(aXd->mDiffBuff, Buffer::Data(aBuffer), aXd->mDiffBuffMaxSize); //fix can mDiffBuff point into Buffer member?
