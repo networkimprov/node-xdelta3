@@ -203,7 +203,7 @@ Handle<Value> XdeltaPatch::New(const Arguments& args) {
 Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
   HandleScope scope;
 
-  if (!((args.Length() == 1 && args[0]->IsFunction()) || (args.Length() >= 2 && Buffer::HasInstance(args[0]) && args[1]->IsFunction())))
+  if (args.Length() < 1 || args.Length() > 1 && !Buffer::HasInstance(args[0]) || !args[args.Length()-1]->IsFunction())
     return ThrowException(Exception::TypeError(String::New("arguments are ([buffer], function)")));
 
   XdeltaPatch* aXd = ObjectWrap::Unwrap<XdeltaPatch>(args.This());
