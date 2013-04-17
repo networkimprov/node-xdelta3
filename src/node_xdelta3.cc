@@ -15,7 +15,7 @@ using namespace node;
 class XdeltaOp : public ObjectWrap {
 protected:
   enum OpType { eOpDiff, eOpPatch };
-  XdeltaOp(int s, int d, OpType op)
+  XdeltaOp(int s, int d, OpType op) //fix move some code to _pool for clarity and/or some firsttime code to ctor?
   : ObjectWrap(), mOpType(op), mSrc(s), mDst(d), mBusy(false), mFirstTime(true), mFinishedProcessing(false),
     mDiffBuffMaxSize(0), mDiffBuffSize(0), mWroteFromStream(0), mInputBufRead(0), mConsumedInput(false), mReadDstN(0), mErrType(eErrNone)
   {
@@ -26,7 +26,7 @@ protected:
     mSource.curblk = (const uint8_t*) new char[mSource.blksize];
     mInputBuf = (void*) new char[mSource.blksize];
   }
-  virtual ~XdeltaOp() {
+  virtual ~XdeltaOp() { //fix clean up stream here?
     delete[] (char*)mSource.curblk;
     delete[] (char*)mInputBuf;
     if (mDiffBuff) delete[] mDiffBuff;
@@ -65,9 +65,9 @@ protected:
   OpType mOpType;
   int mSrc, mDst;
   Persistent<Function> mCallback;
-  bool mBusy;
 
-  bool mFirstTime; //fix replace these with enum { eStart, eRun, eDone } mState;
+  bool mBusy; //fix replace these with enum { eFree, eStart, eRun, eDone } mState;
+  bool mFirstTime;
   bool mFinishedProcessing;
 
   int mDiffBuffMaxSize;
@@ -238,13 +238,13 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   else
     aXd->mDiffBuffSize = aXd->mDiffBuffMaxSize;
   if (aXd->mFirstTime) {
-    xd3_init_config(&aXd->mConfig, XD3_ADLER32);
+    xd3_init_config(&aXd->mConfig, XD3_ADLER32); //fix do in ctor?
     xd3_config_stream(&aXd->mStream, &aXd->mConfig);
     
     int aBytesRead = aXd->Read(aXd->mSrc, (void*)aXd->mSource.curblk, aXd->mSource.blksize, 0);
-    if (aBytesRead < 0) { //fix way to make xd request this read with getsrcblk?
+    if (aBytesRead < 0) { //fix find way to make xd request this read with getsrcblk?
       xd3_close_stream(&aXd->mStream);
-      xd3_free_stream(&aXd->mStream);  //fix config stream after read? would make cleanup unnecessary
+      xd3_free_stream(&aXd->mStream);  //fix do in dtor? or config stream after read? would make cleanup unnecessary
       return;
     }
     aXd->mSource.onblk = aBytesRead;
@@ -346,7 +346,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     } while (!aRead); //fix inner loop not required; test other conditions in main while()
   } while (aXd->mInputBufRead == XD3_ALLOCSIZE);
 
-  xd3_close_stream(&aXd->mStream);
+  xd3_close_stream(&aXd->mStream); //fix do in dtor?
   xd3_free_stream(&aXd->mStream);
 
   aXd->mFinishedProcessing = true;
@@ -366,7 +366,7 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
     aArgc = 0;
   } else {
     aArgv[0] = Undefined();
-    aArgv[1] = node::Buffer::New(aXd->mDiffBuff, aXd->mDiffBuffSize)->handle_;
+    aArgv[1] = node::Buffer::New(aXd->mDiffBuff, aXd->mDiffBuffSize)->handle_; //fix node:: not necessary on other Buffer:: use
   }
   aXd->Unref();
   aXd->mBusy = false;
