@@ -33,7 +33,7 @@ function PatchStream(src, dst) {
   this.on('finish', function () { 
     var that = this;
     that._end(function() {
-      that.emit('close'); //fix stop the finish event from propagating, and then emit finish here?
+      that.emit('close');
     }); 
   });
 }
