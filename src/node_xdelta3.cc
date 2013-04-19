@@ -259,7 +259,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     aXd->mDiffBuffSize += aWriteSize;
     aXd->mWroteFromStream += aWriteSize;
     if (aXd->mWroteFromStream < aXd->mStream.avail_out)
-      return;
+      return; //fix in some cases the above should be done in DiffChunked()? and then nextTick(callback)
     xd3_consume_output(&aXd->mStream);
   }
 
