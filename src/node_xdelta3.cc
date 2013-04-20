@@ -79,7 +79,7 @@ protected:
 
   int mBuffMaxSize;
   char* mBuff;
-  int mBuffSize;
+  int mBuffSize; //fix mBuffLen to avoid 2 variables with *Size
   unsigned int mWroteFromStream;
 
   void* mInputBuf;
@@ -166,8 +166,8 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
   if (aXd->mBusy)
     return ThrowException(Exception::TypeError(String::New("object busy with async op")));
 
-  int aSize = args[0]->Uint32Value(); //fix move to XdeltaOp function
-  if (aSize > aXd->mBuffMaxSize) {
+  int aSize = args[0]->Uint32Value();
+  if (aSize > aXd->mBuffMaxSize) { //fix move to XdeltaOp function
     if (aXd->mBuffMaxSize != 0)
       delete[] aXd->mBuff;
     aXd->mBuffMaxSize = aSize;
@@ -181,7 +181,7 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
     aXd->mBuffSize += aXd->mBuffMaxSize;
     aXd->mWroteFromStream += aXd->mBuffMaxSize;
     if (aXd->mWroteFromStream == aXd->mStream.avail_out)
-      xd3_consume_output(&aXd->mStream);
+      xd3_consume_output(&aXd->mStream); //fix verify that this isn't cpu-intensive
 
     Handle<Value> aArgv[3];
     aArgv[0] = Undefined();
@@ -241,8 +241,8 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
     aXd->mBuffMaxSize = 0;
   } else {
     Local<Object> aBuffer = args[0]->ToObject();
-    int aSize = Buffer::Length(aBuffer); //fix move to XdeltaOp function
-    if (aSize > aXd->mBuffMaxSize) {
+    int aSize = Buffer::Length(aBuffer);
+    if (aSize > aXd->mBuffMaxSize) { //fix move to XdeltaOp function
       if (aXd->mBuffMaxSize != 0)
         delete[] aXd->mBuff;
       aXd->mBuffMaxSize = aSize;
