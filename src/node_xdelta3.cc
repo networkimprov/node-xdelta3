@@ -58,7 +58,6 @@ protected:
     }
     return aBytesRead;
   }
-
   int Write(int fd, void* buf, size_t size, size_t offset) { 
     uv_fs_t aUvReq;
     int aBytesWrote = uv_fs_write(uv_default_loop(), &aUvReq, fd, buf, size, offset, NULL);
@@ -378,13 +377,12 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
     aArgv[2] = v8::False();
   }
   aXd->Unref();
-  aXd->mBusy = false;
-
-  TryCatch try_catch;  
+  aXd->mBusy = false;  
   Local<Function> aCallback(Local<Function>::New(aXd->mCallback));
   aXd->mCallback.Dispose(); 
-  aCallback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
 
+  TryCatch try_catch;
+  aCallback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
   if (try_catch.HasCaught())
     FatalException(try_catch);
 
