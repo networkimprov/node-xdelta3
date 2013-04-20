@@ -32,8 +32,11 @@ function PatchStream(src, dst) {
   this.patchObj = new xdelta.XdeltaPatch(src, dst);
   this.on('finish', function () { 
     var that = this;
-    that._end(function() {
-      that.emit('close');
+    that._end(function(err) {
+      if (err)
+        that.emit('error', err);
+      else
+        that.emit('close');
     }); 
   });
 }
