@@ -39,7 +39,7 @@ function PatchStream(src, dst) {
 }
 util.inherits(PatchStream, stream.Writable);
 
-PatchStream.prototype._write = function (chunk, encoding, callback) { //fix callback is optional?
+PatchStream.prototype._write = function (chunk, encoding, callback) {
   this.patchObj.patchChunked(chunk, callback);
 };
 
