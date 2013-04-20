@@ -17,21 +17,18 @@ util.inherits(DiffStream, stream.Readable);
 DiffStream.prototype._read = function(size) {
   var that = this;
   that.diffObj.diffChunked(size, function(err, data, nextTick) {
-    if (nextTick === true)
-      process.nextTick(function(){ that._finishRead(err, data, nextTick); });
+    if (err)
+      that.emit('error', err);
+    else if (nextTick)
+      process.nextTick(fPush); //fix only necessary if _read supposed to be async and not push immediately, which seems unlikely
     else
-      that._finishRead(err, data, nextTick);
+      fPush();
+    function fPush() { //fix note this pattern for future reference
+      that.push(typeof(data) === 'undefined' ? null : data);
+    }
   });
 };
 
-DiffStream.prototype._finishRead = function(err, data, nextTick) {
-  if (err)
-    this.emit('error', err);
-  else if (typeof(data) != 'undefined') 
-    this.push(data);
-  else
-    this.push(null);
-};
 
 function PatchStream(src, dst) {
   stream.Writable.call(this);
