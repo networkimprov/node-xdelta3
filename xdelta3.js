@@ -16,16 +16,22 @@ util.inherits(DiffStream, stream.Readable);
 
 DiffStream.prototype._read = function(size) {
   var that = this;
-  that.diffObj.diffChunked(size, function(err, data) {
-    if (err)
-      that.emit('error', err);
-    else if (typeof(data) != 'undefined') 
-      that.push(data);
+  that.diffObj.diffChunked(size, function(err, data, nextTick) {
+    if (nextTick === true)
+      process.nextTick(function(){ that._finishRead(err, data, nextTick); });
     else
-      that.push(null);
+      that._finishRead(err, data, nextTick);
   });
 };
 
+DiffStream.prototype._finishRead = function(err, data, nextTick) {
+  if (err)
+    this.emit('error', err);
+  else if (typeof(data) != 'undefined') 
+    this.push(data);
+  else
+    this.push(null);
+};
 
 function PatchStream(src, dst) {
   stream.Writable.call(this);

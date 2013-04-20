@@ -178,7 +178,25 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
   }
   aXd->mBuffSize = 0;
 
-  aXd->StartAsync(Local<Function>::Cast(args[1]));
+  if ((int) aXd->mStream.avail_out - (int) aXd->mWroteFromStream > aXd->mBuffMaxSize) { //if there is a full chunk left in the out stream to emit
+    int aWriteSize = aXd->mBuffMaxSize;
+    memcpy(aXd->mBuff, aXd->mStream.next_out + aXd->mWroteFromStream, aXd->mBuffMaxSize);
+    aXd->mBuffSize += aXd->mBuffMaxSize;
+    aXd->mWroteFromStream += aXd->mBuffMaxSize;
+    if (aXd->mWroteFromStream == aXd->mStream.avail_out)
+      xd3_consume_output(&aXd->mStream);
+
+    Handle<Value> aArgv[3];
+    aArgv[0] = Undefined();
+    aArgv[1] = Buffer::New(aXd->mBuff, aXd->mBuffSize)->handle_;
+    aArgv[2] = v8::True();
+
+    TryCatch try_catch;  
+    Local<Function>::Cast(args[1])->Call(Context::GetCurrent()->Global(), 3, aArgv);
+    if (try_catch.HasCaught())
+      FatalException(try_catch);
+  } else
+    aXd->StartAsync(Local<Function>::Cast(args[1]));
 
   return args.This();
 }
@@ -245,13 +263,11 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
 
-  if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to emit for a readable buffer
-    int aWriteSize = ((int) aXd->mStream.avail_out - (int) aXd->mWroteFromStream > aXd->mBuffMaxSize) ? aXd->mBuffMaxSize : aXd->mStream.avail_out - aXd->mWroteFromStream;
+  if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to copy to aXd->mBuff
+    int aWriteSize = aXd->mStream.avail_out - aXd->mWroteFromStream;
     memcpy(aXd->mBuff, aXd->mStream.next_out + aXd->mWroteFromStream, aWriteSize);
     aXd->mBuffSize += aWriteSize;
     aXd->mWroteFromStream += aWriteSize;
-    if (aXd->mWroteFromStream < aXd->mStream.avail_out)
-      return; //fix in some cases the above should be done in DiffChunked()? and then nextTick(callback)
     xd3_consume_output(&aXd->mStream);
   }
 
@@ -347,8 +363,8 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
   HandleScope scope;
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
 
-  Handle<Value> aArgv[2];
-  int aArgc = 2;
+  Handle<Value> aArgv[3];
+  int aArgc;
 
   if (aXd->mErrType != eErrNone) {
     aArgv[0] = String::New(aXd->mErrType == eErrUv ? uv_strerror(aXd->mUvErr) : aXd->mXdErr.c_str());
@@ -356,8 +372,10 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
   } else if (aXd->mFinishedProcessing && aXd->mBuffSize == 0) {
     aArgc = 0;
   } else {
+    aArgc = 3;
     aArgv[0] = Undefined();
     aArgv[1] = Buffer::New(aXd->mBuff, aXd->mBuffSize)->handle_;
+    aArgv[2] = v8::False();
   }
   aXd->Unref();
   aXd->mBusy = false;
