@@ -321,13 +321,12 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
       break;
     }
     case XD3_GETSRCBLK: {
-      int aBytesRead = aXd->Read(aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mState == eStart ? 0 : aXd->mSource.blksize * aXd->mSource.getblkno);
+      int aBytesRead = aXd->Read(aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno);
       if (aBytesRead < 0)
         return;
       aXd->mSource.onblk = aBytesRead;
       aXd->mSource.curblkno = aXd->mSource.getblkno;
       if (aXd->mState == eStart) {
-        aXd->mSource.curblkno = 0;
         xd3_set_source(&aXd->mStream, &aXd->mSource);
         aAct = XD3_INPUT;
         continue;
