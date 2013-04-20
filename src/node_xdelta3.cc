@@ -32,7 +32,6 @@ protected:
     if (mDiffBuff) delete[] mDiffBuff;
   }
   void StartAsync(Handle<Function> fn) {
-    mCallback.Dispose(); //fix find a way to Dispose in _done
     mCallback = Persistent<Function>::New(fn);
     mBusy = true;
     this->Ref();
@@ -371,9 +370,11 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
   }
   aXd->Unref();
   aXd->mBusy = false;
-  
-  TryCatch try_catch;
-  aXd->mCallback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
+
+  TryCatch try_catch;  
+  Local<Function> aCallback(Local<Function>::New(aXd->mCallback));
+  aXd->mCallback.Dispose(); 
+  aCallback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
 
   if (try_catch.HasCaught())
     FatalException(try_catch);
