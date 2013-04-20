@@ -274,6 +274,19 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   int aAct = aXd->mState == eStart ? XD3_GETSRCBLK : aXd->mOpType == eOpPatch ? XD3_INPUT : xd3_encode_input(&aXd->mStream);
   do {
     switch (aAct) {
+    case XD3_GETSRCBLK: {
+      int aBytesRead = aXd->Read(aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno);
+      if (aBytesRead < 0)
+        return;
+      aXd->mSource.onblk = aBytesRead;
+      aXd->mSource.curblkno = aXd->mSource.getblkno;
+      if (aXd->mState == eStart) {
+        xd3_set_source(&aXd->mStream, &aXd->mSource);
+        aAct = XD3_INPUT;
+        continue;
+      }
+      break; 
+    }
     case XD3_INPUT: {
      aXd->mState = eRun;
      if (aXd->mOpType == eOpDiff) {
@@ -319,19 +332,6 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         xd3_consume_output(&aXd->mStream);
       }
       break;
-    }
-    case XD3_GETSRCBLK: {
-      int aBytesRead = aXd->Read(aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno);
-      if (aBytesRead < 0)
-        return;
-      aXd->mSource.onblk = aBytesRead;
-      aXd->mSource.curblkno = aXd->mSource.getblkno;
-      if (aXd->mState == eStart) {
-        xd3_set_source(&aXd->mStream, &aXd->mSource);
-        aAct = XD3_INPUT;
-        continue;
-      }
-      break; 
     }
     case XD3_GOTHEADER:
     case XD3_WINSTART:
