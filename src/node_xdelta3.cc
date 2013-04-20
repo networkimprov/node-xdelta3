@@ -273,15 +273,9 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   if (aXd->mFinishedProcessing)
     return;
 
-  int aRet;
-  if (aXd->mFirstTime)
-    aRet = XD3_GETSRCBLK;
-  else if (aXd->mOpType == eOpPatch)
-    aRet = XD3_INPUT;
-  else
-    aRet = aXd->mOpType == eOpDiff ? xd3_encode_input(&aXd->mStream) : xd3_decode_input(&aXd->mStream);
+  int aAct = aXd->mFirstTime ? XD3_GETSRCBLK : aXd->mOpType == eOpPatch ? XD3_INPUT : xd3_encode_input(&aXd->mStream);
   do {
-    switch (aRet) {
+    switch (aAct) {
     case XD3_INPUT: {
      aXd->mFirstTime = false;
      if (aXd->mOpType == eOpDiff) {
@@ -334,11 +328,10 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         return;
       aXd->mSource.onblk = aBytesRead;
       aXd->mSource.curblkno = aXd->mSource.getblkno;
-
       if (aXd->mFirstTime) {
         aXd->mSource.curblkno = 0;
         xd3_set_source(&aXd->mStream, &aXd->mSource);
-        aRet = XD3_INPUT;
+        aAct = XD3_INPUT;
         continue;
       }
       break; 
@@ -352,8 +345,8 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
       aXd->mXdErr = aXd->mStream.msg;
       return;
     }
-    aRet = aXd->mOpType == eOpDiff ? xd3_encode_input(&aXd->mStream) : xd3_decode_input(&aXd->mStream);
-  } while (aXd->mInputBufRead == XD3_ALLOCSIZE || aRet != XD3_INPUT || aXd->mFirstTime);
+    aAct = aXd->mOpType == eOpDiff ? xd3_encode_input(&aXd->mStream) : xd3_decode_input(&aXd->mStream);
+  } while (aXd->mInputBufRead == XD3_ALLOCSIZE || aAct != XD3_INPUT || aXd->mFirstTime);
 
   aXd->mFinishedProcessing = true;
 }
