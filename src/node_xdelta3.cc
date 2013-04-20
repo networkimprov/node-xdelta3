@@ -246,14 +246,6 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     aXd->mBuffSize = 0;
   else
     aXd->mBuffSize = aXd->mBuffMaxSize;
-  if (aXd->mFirstTime) {
-    int aBytesRead = aXd->Read(aXd->mSrc, (void*)aXd->mSource.curblk, aXd->mSource.blksize, 0); //fix find way to make xd request this read with getsrcblk?
-    if (aBytesRead < 0)
-      return;
-    aXd->mSource.onblk = aBytesRead;
-    aXd->mSource.curblkno = 0;
-    xd3_set_source(&aXd->mStream, &aXd->mSource);
-  }
 
   if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to emit for a readable buffer
     int aWriteSize = ((int) aXd->mStream.avail_out - (int) aXd->mWroteFromStream > aXd->mBuffMaxSize) ? aXd->mBuffMaxSize : aXd->mStream.avail_out - aXd->mWroteFromStream;
@@ -269,14 +261,16 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     return;
 
   int aRet;
-  if (aXd->mFirstTime || aXd->mOpType == eOpPatch)
+  if (aXd->mFirstTime)
+    aRet = XD3_GETSRCBLK;
+  else if (aXd->mOpType == eOpPatch)
     aRet = XD3_INPUT;
   else
     aRet = aXd->mOpType == eOpDiff ? xd3_encode_input(&aXd->mStream) : xd3_decode_input(&aXd->mStream);
-  aXd->mFirstTime = false;
   do {
     switch (aRet) {
-    case XD3_INPUT:
+    case XD3_INPUT: {
+     aXd->mFirstTime = false;
      if (aXd->mOpType == eOpDiff) {
         aXd->mInputBufRead = aXd->Read(aXd->mDst, aXd->mInputBuf, XD3_ALLOCSIZE, aXd->mFileOffset);
         aXd->mFileOffset += XD3_ALLOCSIZE;
@@ -303,6 +297,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
       xd3_avail_input(&aXd->mStream, (const uint8_t*) aXd->mInputBuf, aXd->mInputBufRead);
       aXd->mConsumedInput = true;
       break;
+    }
     case XD3_OUTPUT: {
       if (aXd->mOpType == eOpDiff) {
         int aWriteSize = ((int)aXd->mStream.avail_out > aXd->mBuffMaxSize - aXd->mBuffSize) ? aXd->mBuffMaxSize - aXd->mBuffSize : aXd->mStream.avail_out;
@@ -321,11 +316,18 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
       break;
     }
     case XD3_GETSRCBLK: {
-      int aBytesRead = aXd->Read(aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno);
+      int aBytesRead = aXd->Read(aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mFirstTime ? 0 : aXd->mSource.blksize * aXd->mSource.getblkno);
       if (aBytesRead < 0)
         return;
       aXd->mSource.onblk = aBytesRead;
       aXd->mSource.curblkno = aXd->mSource.getblkno;
+
+      if (aXd->mFirstTime) {
+        aXd->mSource.curblkno = 0;
+        xd3_set_source(&aXd->mStream, &aXd->mSource);
+        aRet = XD3_INPUT;
+        continue;
+      }
       break; 
     }
     case XD3_GOTHEADER:
@@ -338,7 +340,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
       return;
     }
     aRet = aXd->mOpType == eOpDiff ? xd3_encode_input(&aXd->mStream) : xd3_decode_input(&aXd->mStream);
-  } while (aXd->mInputBufRead == XD3_ALLOCSIZE || aRet != XD3_INPUT);
+  } while (aXd->mInputBufRead == XD3_ALLOCSIZE || aRet != XD3_INPUT || aXd->mFirstTime);
 
   aXd->mFinishedProcessing = true;
 }
