@@ -32,6 +32,7 @@ protected:
     mInputBufRead = 0;
     mConsumedInput = false;
     mFileOffset = 0; 
+    mBuffMaxSize = 0;
   }
   virtual ~XdeltaOp() {
     delete[] (char*)mSource.curblk;
@@ -175,6 +176,7 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
     aXd->mBuffMaxSize = aSize;
     aXd->mBuff = new char[aXd->mBuffMaxSize];
   }
+  aXd->mBuffSize = 0;
 
   aXd->StartAsync(Local<Function>::Cast(args[1]));
 
@@ -220,7 +222,6 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 
   if (aXd->mBusy)
     return ThrowException(Exception::TypeError(String::New("object busy with async op")));
-
   if (args.Length() == 1) {
     aXd->mBuffMaxSize = 0;
   } else {
@@ -232,8 +233,10 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
       aXd->mBuffMaxSize = aSize;
       aXd->mBuff = new char[aXd->mBuffMaxSize];
     }
+    aXd->mBuffMaxSize = aSize;
     memcpy(aXd->mBuff, Buffer::Data(aBuffer), aXd->mBuffMaxSize); //fix can mBuff point into Buffer member?
   }
+  aXd->mBuffSize = aXd->mBuffMaxSize;
   aXd->StartAsync(Local<Function>::Cast(args[args.Length()-1]));
 
   return args.This();
@@ -241,11 +244,6 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 
 void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
-
-  if (aXd->mOpType == eOpDiff)
-    aXd->mBuffSize = 0;
-  else
-    aXd->mBuffSize = aXd->mBuffMaxSize;
 
   if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to emit for a readable buffer
     int aWriteSize = ((int) aXd->mStream.avail_out - (int) aXd->mWroteFromStream > aXd->mBuffMaxSize) ? aXd->mBuffMaxSize : aXd->mStream.avail_out - aXd->mWroteFromStream;
