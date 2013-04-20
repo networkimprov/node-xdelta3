@@ -268,14 +268,16 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   if (aXd->mFinishedProcessing)
     return;
 
-
-  bool aRead = aXd->mFirstTime || aXd->mOpType == eOpPatch;
+  int aRet;
+  if (aXd->mFirstTime || aXd->mOpType == eOpPatch)
+    aRet = XD3_INPUT;
+  else
+    aRet = aXd->mOpType == eOpDiff ? xd3_encode_input(&aXd->mStream) : xd3_decode_input(&aXd->mStream);
   aXd->mFirstTime = false;
   do {
-    int aRet;
-    if (aRead) {
-      aRead = false;
-      if (aXd->mOpType == eOpDiff) {
+    switch (aRet) {
+    case XD3_INPUT:
+     if (aXd->mOpType == eOpDiff) {
         aXd->mInputBufRead = aXd->Read(aXd->mDst, aXd->mInputBuf, XD3_ALLOCSIZE, aXd->mFileOffset);
         aXd->mFileOffset += XD3_ALLOCSIZE;
         if (aXd->mInputBufRead < 0)
@@ -300,13 +302,6 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         xd3_set_flags(&aXd->mStream, XD3_FLUSH | aXd->mStream.flags);
       xd3_avail_input(&aXd->mStream, (const uint8_t*) aXd->mInputBuf, aXd->mInputBufRead);
       aXd->mConsumedInput = true;
-    }
-
-    aRet = aXd->mOpType == eOpDiff ? xd3_encode_input(&aXd->mStream) : xd3_decode_input(&aXd->mStream);
-
-    switch (aRet) {
-    case XD3_INPUT:
-      aRead = true; //fix move contents of if(aRead) here?
       break;
     case XD3_OUTPUT: {
       if (aXd->mOpType == eOpDiff) {
@@ -323,7 +318,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         aXd->mFileOffset += (int)aXd->mStream.avail_out;
         xd3_consume_output(&aXd->mStream);
       }
-      continue;
+      break;
     }
     case XD3_GETSRCBLK: {
       int aBytesRead = aXd->Read(aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno);
@@ -331,18 +326,19 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         return;
       aXd->mSource.onblk = aBytesRead;
       aXd->mSource.curblkno = aXd->mSource.getblkno;
-      continue; 
+      break; 
     }
     case XD3_GOTHEADER:
     case XD3_WINSTART:
     case XD3_WINFINISH:
-      continue;
+      break;
     default:
       aXd->mErrType = eErrXd;
       aXd->mXdErr = aXd->mStream.msg;
       return;
     }
-  } while (aXd->mInputBufRead == XD3_ALLOCSIZE || !aRead);
+    aRet = aXd->mOpType == eOpDiff ? xd3_encode_input(&aXd->mStream) : xd3_decode_input(&aXd->mStream);
+  } while (aXd->mInputBufRead == XD3_ALLOCSIZE || aRet != XD3_INPUT);
 
   aXd->mFinishedProcessing = true;
 }
