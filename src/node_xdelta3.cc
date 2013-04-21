@@ -167,7 +167,7 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
     return ThrowException(Exception::TypeError(String::New("object busy with async op")));
 
   int aSize = args[0]->Uint32Value();
-  if (aSize > aXd->mBuffMaxSize) { //fix move to XdeltaOp function
+  if (aSize > aXd->mBuffMaxSize) { //fix looks like we need mDiffBuffSize so we don't return more than requested
     if (aXd->mBuffMaxSize != 0)
       delete[] aXd->mBuff;
     aXd->mBuffMaxSize = aSize;
@@ -176,13 +176,14 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
   aXd->mBuffSize = 0;
 
   if ((int) aXd->mStream.avail_out - (int) aXd->mWroteFromStream > aXd->mBuffMaxSize) { //if there is a full chunk left in the out stream to emit
-    int aWriteSize = aXd->mBuffMaxSize;
+    int aWriteSize = aXd->mBuffMaxSize; //fix not used?
     memcpy(aXd->mBuff, aXd->mStream.next_out + aXd->mWroteFromStream, aXd->mBuffMaxSize);
     aXd->mBuffSize += aXd->mBuffMaxSize;
     aXd->mWroteFromStream += aXd->mBuffMaxSize;
     if (aXd->mWroteFromStream == aXd->mStream.avail_out)
-      xd3_consume_output(&aXd->mStream); //fix verify that this isn't cpu-intensive
+      xd3_consume_output(&aXd->mStream); //fix can defer til next _pool call?
 
+    //fix call _done directly here to avoid duplication?
     Handle<Value> aArgv[3];
     aArgv[0] = Undefined();
     aArgv[1] = Buffer::New(aXd->mBuff, aXd->mBuffSize)->handle_;
@@ -240,16 +241,17 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
   if (args.Length() == 1) {
     aXd->mBuffMaxSize = 0;
   } else {
+    //fix don't alloc/copy. mPatchBuff = Unwrap(), Ref(), mBuff = Data(), Unref() & clear mBuff in _done
     Local<Object> aBuffer = args[0]->ToObject();
     int aSize = Buffer::Length(aBuffer);
-    if (aSize > aXd->mBuffMaxSize) { //fix move to XdeltaOp function
+    if (aSize > aXd->mBuffMaxSize) {
       if (aXd->mBuffMaxSize != 0)
         delete[] aXd->mBuff;
       aXd->mBuffMaxSize = aSize;
       aXd->mBuff = new char[aXd->mBuffMaxSize];
     }
     aXd->mBuffMaxSize = aSize;
-    memcpy(aXd->mBuff, Buffer::Data(aBuffer), aXd->mBuffMaxSize); //fix can mBuff point into Buffer member?
+    memcpy(aXd->mBuff, Buffer::Data(aBuffer), aXd->mBuffMaxSize);
   }
   aXd->mBuffSize = aXd->mBuffMaxSize;
   aXd->StartAsync(Local<Function>::Cast(args[args.Length()-1]));
@@ -261,6 +263,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
 
   if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to copy to aXd->mBuff
+    //fix do this in DiffChunked before StartAsync?
     int aWriteSize = aXd->mStream.avail_out - aXd->mWroteFromStream;
     memcpy(aXd->mBuff, aXd->mStream.next_out + aXd->mWroteFromStream, aWriteSize);
     aXd->mBuffSize += aWriteSize;
@@ -324,13 +327,12 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
         aXd->mWroteFromStream = aWriteSize;
         if (aXd->mWroteFromStream < aXd->mStream.avail_out) //diff buffer is full
           return;
-        xd3_consume_output(&aXd->mStream);
       } else {
         if (aXd->Write(aXd->mDst, aXd->mStream.next_out, (int)aXd->mStream.avail_out, aXd->mFileOffset) < 0)
           return;
         aXd->mFileOffset += (int)aXd->mStream.avail_out;
-        xd3_consume_output(&aXd->mStream);
       }
+      xd3_consume_output(&aXd->mStream);
       break;
     }
     case XD3_GOTHEADER:
