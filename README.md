@@ -45,7 +45,7 @@ aPatch.on('close', function() {
 
 This binding requires the existence of libxdelta3 in a shared library path:
 
-* download the sources for a stable release - [3.0.6 here ](https://code.google.com/p/xdelta/source/browse/trunk/xdelta3/releases/xdelta3-3.0.6.tar.gz)
+* download the sources for a stable release - [3.0.6 here](https://code.google.com/p/xdelta/downloads/detail?name=xdelta3-3.0.6.tar.gz)
 * build the command line interface
 * create the library from the existing objects:
 ```
