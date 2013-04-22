@@ -1,15 +1,18 @@
+var nPath = require('path');
+var nFs = require('fs');
+var nChild = require('child_process');
 
-var aCmd = '\
-  node diff_basic_1.js; \
-  node diffpatch_large_1.js; \
-  node patch_basic_1.js';
+var aCmd = '';
+
+var aAllFiles = nFs.readdirSync(nPath.dirname(module.filename));
+for (var i=0; i < aAllFiles.length; i++)
+  if (aAllFiles[i].match(/^test_.*\.js$/g))
+    aCmd += 'node ' + nPath.resolve(__dirname, aAllFiles[i]) + ';';
 
 run(aCmd, 1, function(err) {
-  if (err) throw new Exception('halted');
+  if (err) throw new Error('halted');
   console.log('tests complete');
 });
-
-var nChild = require('child_process');
 
 function run(iCommand, iErrValue, iCallback) {
   if (arguments.length < 3) {
