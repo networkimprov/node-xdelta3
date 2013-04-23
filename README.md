@@ -49,7 +49,7 @@ This binding requires the existence of libxdelta3 in a shared library path:
 * build the command line interface
 * create the library from the existing objects:
 ```
-ar cr libxdelta3.so xdelta-xdelta3.o
+gcc -shared xdelta3-xdelta3.o -o libxdelta3.so
 ```
 * move the library to a shared lib path (ex /usr/local/lib)
 
