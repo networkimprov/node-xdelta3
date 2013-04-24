@@ -70,6 +70,7 @@ protected:
   static void OpChunked_done(uv_work_t* req, int );
 
   virtual void OpChunked_clean() {}
+  void OpChunked_callback(Local<Function> callback);
 
   OpType mOpType;
   int mSrc, mDst;
@@ -197,18 +198,9 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
     aXd->mWroteFromStream += aWriteSize;
   }
 
-  if (aXd->mWroteFromStream < aXd->mStream.avail_out) {
-    //fix call _done directly here to avoid duplication?
-    Handle<Value> aArgv[3];
-    aArgv[0] = Undefined();
-    aArgv[1] = Buffer::New(aXd->mBuff, aXd->mBuffLen)->handle_;
-    aArgv[2] = v8::True();
-
-    TryCatch try_catch;  
-    Local<Function>::Cast(args[1])->Call(Context::GetCurrent()->Global(), 3, aArgv);
-    if (try_catch.HasCaught())
-      FatalException(try_catch);
-  } else
+  if (aXd->mWroteFromStream < aXd->mStream.avail_out)
+    aXd->OpChunked_callback(Local<Function>::Cast(args[1]));
+  else
     aXd->StartAsync(Local<Function>::Cast(args[1]));
     
   return args.This();
@@ -355,20 +347,6 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
   HandleScope scope;
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
 
-  Handle<Value> aArgv[3];
-  int aArgc;
-
-  if (aXd->mErrType != eErrNone) {
-    aArgv[0] = String::New(aXd->mErrType == eErrUv ? uv_strerror(aXd->mUvErr) : aXd->mXdErr.c_str());
-    aArgc = 1;
-  } else if (aXd->mState == eDone && aXd->mBuffLen == 0) {
-    aArgc = 0;
-  } else {
-    aArgc = 3;
-    aArgv[0] = Undefined();
-    aArgv[1] = Buffer::New(aXd->mBuff, aXd->mBuffLen)->handle_;
-    aArgv[2] = v8::False();
-  }
   aXd->Unref();
   aXd->mBusy = false;  
   Local<Function> aCallback(Local<Function>::New(aXd->mCallback));
@@ -376,11 +354,30 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
 
   aXd->OpChunked_clean();
 
-  TryCatch try_catch;
-  aCallback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
-  if (try_catch.HasCaught())
-    FatalException(try_catch);
+  aXd->OpChunked_callback(aCallback);
 
   delete req;
+}
+
+void XdeltaOp::OpChunked_callback(Local<Function> callback) {
+  Handle<Value> aArgv[3];
+  int aArgc;
+
+  if (mErrType != eErrNone) {
+    aArgv[0] = String::New(mErrType == eErrUv ? uv_strerror(mUvErr) : mXdErr.c_str());
+    aArgc = 1;
+  } else if (mState == eDone && mBuffLen == 0) {
+    aArgc = 0;
+  } else {
+    aArgc = 3;
+    aArgv[0] = Undefined();
+    aArgv[1] = Buffer::New(mBuff, mBuffLen)->handle_;
+    aArgv[2] = v8::False();
+  }
+
+  TryCatch try_catch;
+  callback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
+  if (try_catch.HasCaught())
+    FatalException(try_catch);
 }
 
