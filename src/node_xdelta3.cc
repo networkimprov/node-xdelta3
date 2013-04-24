@@ -102,13 +102,17 @@ public:
   static void Init(Handle<Object> target);
 
 protected:
-  XdeltaDiff(int s, int d) : XdeltaOp(s, d, eOpDiff) { };
+  XdeltaDiff(int s, int d) : XdeltaOp(s, d, eOpDiff) {
+    mBuffMemSize = 0;
+  };
   ~XdeltaDiff() {
     if (mBuff) delete[] mBuff;
   }
 
   static Handle<Value> New(const Arguments& args);
   static Handle<Value> DiffChunked(const Arguments& args);
+
+  int mBuffMemSize;
 };
 
 class XdeltaPatch : public XdeltaOp {
@@ -177,12 +181,13 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
     return ThrowException(Exception::TypeError(String::New("object busy with async op")));
 
   int aSize = args[0]->Uint32Value();
-  if (aSize > aXd->mBuffMaxSize) { //fix looks like we need mDiffBuffSize so we don't return more than requested
-    if (aXd->mBuffMaxSize != 0)
+  if (aSize > aXd->mBuffMemSize) {
+    if (aXd->mBuffMemSize != 0)
       delete[] aXd->mBuff;
-    aXd->mBuffMaxSize = aSize;
-    aXd->mBuff = new char[aXd->mBuffMaxSize];
+    aXd->mBuffMemSize = aSize;
+    aXd->mBuff = new char[aXd->mBuffMemSize];
   }
+  aXd->mBuffMaxSize = aSize;
   aXd->mBuffLen = 0;
 
   if (aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to copy to aXd->mBuff
