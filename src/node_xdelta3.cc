@@ -47,6 +47,11 @@ protected:
     aReq->data = this;
     uv_queue_work(uv_default_loop(), aReq, OpChunked_pool, OpChunked_done);
   }
+  virtual void FinishAsync() {
+    mBusy = false;
+    Unref();
+    mCallback.Dispose();
+  }
   int Read(int fd, void* buf, size_t size, size_t offset) {
     uv_fs_t aUvReq;
     int aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, fd, buf, size, offset, NULL);
@@ -69,7 +74,6 @@ protected:
   static void OpChunked_pool(uv_work_t* req);
   static void OpChunked_done(uv_work_t* req, int );
 
-  virtual void OpChunked_clean() {}
   void OpChunked_callback(Local<Function> callback);
 
   OpType mOpType;
@@ -126,7 +130,8 @@ protected:
 
   XdeltaPatch(int s, int d) : XdeltaOp(s, d, eOpPatch) { };
 
-  void OpChunked_clean() {
+  void FinishAsync() {
+    XdeltaOp::FinishAsync();
     mBufferObj.Dispose();
   }
 
@@ -347,12 +352,9 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
   HandleScope scope;
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
 
-  aXd->Unref();
-  aXd->mBusy = false;  
   Local<Function> aCallback(Local<Function>::New(aXd->mCallback));
-  aXd->mCallback.Dispose();
 
-  aXd->OpChunked_clean();
+  aXd->FinishAsync();
 
   aXd->OpChunked_callback(aCallback);
 
