@@ -185,11 +185,14 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
   }
   aXd->mBuffLen = 0;
 
-  if ((int) aXd->mStream.avail_out - (int) aXd->mWroteFromStream > aXd->mBuffMaxSize) { //if there is a full chunk left in the out stream to emit
-    memcpy(aXd->mBuff, aXd->mStream.next_out + aXd->mWroteFromStream, aXd->mBuffMaxSize);
-    aXd->mBuffLen += aXd->mBuffMaxSize;
-    aXd->mWroteFromStream += aXd->mBuffMaxSize;
+  if (aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to copy to aXd->mBuff
+    int aWriteSize = (aXd->mStream.avail_out - aXd->mWroteFromStream > aXd->mBuffMaxSize) ? aXd->mBuffMaxSize : aXd->mStream.avail_out - aXd->mWroteFromStream;
+    memcpy(aXd->mBuff, aXd->mStream.next_out + aXd->mWroteFromStream, aWriteSize);
+    aXd->mBuffLen += aWriteSize;
+    aXd->mWroteFromStream += aWriteSize;
+  }
 
+  if (aXd->mWroteFromStream < aXd->mStream.avail_out) {
     //fix call _done directly here to avoid duplication?
     Handle<Value> aArgv[3];
     aArgv[0] = Undefined();
@@ -202,7 +205,7 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
       FatalException(try_catch);
   } else
     aXd->StartAsync(Local<Function>::Cast(args[1]));
-
+    
   return args.This();
 }
 
@@ -260,14 +263,6 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 
 void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
-
-  if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to copy to aXd->mBuff
-    //fix do this in DiffChunked before StartAsync?
-    int aWriteSize = aXd->mStream.avail_out - aXd->mWroteFromStream;
-    memcpy(aXd->mBuff, aXd->mStream.next_out + aXd->mWroteFromStream, aWriteSize);
-    aXd->mBuffLen += aWriteSize;
-    aXd->mWroteFromStream += aWriteSize;
-  }
 
   if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream == aXd->mStream.avail_out)
       xd3_consume_output(&aXd->mStream);
