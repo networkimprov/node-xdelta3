@@ -36,7 +36,6 @@ protected:
   virtual ~XdeltaOp() {
     delete[] (char*)mSource.curblk;
     delete[] (char*)mInputBuf;
-    if (mBuff) delete[] mBuff;
     xd3_close_stream(&mStream);
     xd3_free_stream(&mStream);
   }
@@ -70,6 +69,8 @@ protected:
   static void OpChunked_pool(uv_work_t* req);
   static void OpChunked_done(uv_work_t* req, int );
 
+  virtual void OpChunked_clean() {}
+
   OpType mOpType;
   int mSrc, mDst;
   Persistent<Function> mCallback;
@@ -102,6 +103,9 @@ public:
 
 protected:
   XdeltaDiff(int s, int d) : XdeltaOp(s, d, eOpDiff) { };
+  ~XdeltaDiff() {
+    if (mBuff) delete[] mBuff;
+  }
 
   static Handle<Value> New(const Arguments& args);
   static Handle<Value> DiffChunked(const Arguments& args);
@@ -113,7 +117,13 @@ public:
   static void Init(Handle<Object> target);
 
 protected:
+  Persistent<Object> mBufferObj;
+
   XdeltaPatch(int s, int d) : XdeltaOp(s, d, eOpPatch) { };
+
+  void OpChunked_clean() {
+    mBufferObj.Dispose();
+  }
 
   static Handle<Value> New(const Arguments& args);
   static Handle<Value> PatchChunked(const Arguments& args);
@@ -238,17 +248,9 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
   if (args.Length() == 1) {
     aXd->mBuffMaxSize = 0;
   } else {
-    //fix don't alloc/copy. mPatchBuff = Unwrap(), Ref(), mBuff = Data(), Unref() & clear mBuff in _done
-    Local<Object> aBuffer = args[0]->ToObject();
-    int aSize = Buffer::Length(aBuffer);
-    if (aSize > aXd->mBuffMaxSize) {
-      if (aXd->mBuffMaxSize != 0)
-        delete[] aXd->mBuff;
-      aXd->mBuffMaxSize = aSize;
-      aXd->mBuff = new char[aXd->mBuffMaxSize];
-    }
-    aXd->mBuffMaxSize = aSize;
-    memcpy(aXd->mBuff, Buffer::Data(aBuffer), aXd->mBuffMaxSize);
+    aXd->mBufferObj = Persistent<Object>::New(args[0]->ToObject());
+    aXd->mBuffMaxSize = Buffer::Length(aXd->mBufferObj);
+    aXd->mBuff = Buffer::Data(aXd->mBufferObj);
   }
   aXd->mBuffLen = aXd->mBuffMaxSize;
   aXd->StartAsync(Local<Function>::Cast(args[args.Length()-1]));
@@ -370,7 +372,9 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
   aXd->Unref();
   aXd->mBusy = false;  
   Local<Function> aCallback(Local<Function>::New(aXd->mCallback));
-  aXd->mCallback.Dispose(); 
+  aXd->mCallback.Dispose();
+
+  aXd->OpChunked_clean();
 
   TryCatch try_catch;
   aCallback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
