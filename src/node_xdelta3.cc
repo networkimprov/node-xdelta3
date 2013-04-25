@@ -362,7 +362,7 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
 }
 
 void XdeltaOp::OpChunked_callback(Local<Function> callback) {
-  Handle<Value> aArgv[3];
+  Handle<Value> aArgv[2];
   int aArgc;
 
   if (mErrType != eErrNone) {
@@ -371,10 +371,9 @@ void XdeltaOp::OpChunked_callback(Local<Function> callback) {
   } else if (mState == eDone && mBuffLen == 0) {
     aArgc = 0;
   } else {
-    aArgc = 3;
+    aArgc = 2;
     aArgv[0] = Undefined();
     aArgv[1] = Buffer::New(mBuff, mBuffLen)->handle_;
-    aArgv[2] = v8::False();
   }
 
   TryCatch try_catch;

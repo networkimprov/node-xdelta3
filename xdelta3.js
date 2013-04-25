@@ -19,13 +19,8 @@ DiffStream.prototype._read = function(size) {
   that.diffObj.diffChunked(size, function(err, data, nextTick) {
     if (err)
       that.emit('error', err);
-    else if (nextTick)
-      process.nextTick(fPush); //fix only necessary if _read supposed to be async and not push immediately, which seems unlikely - https://github.com/networkimprov/node-xdelta3/commit/2726fab92e3a2b6aeef90eed0d0161b42ca59a24#L0L254
     else
-      fPush();
-    function fPush() {
       that.push(typeof(data) === 'undefined' ? null : data);
-    }
   });
 };
 
