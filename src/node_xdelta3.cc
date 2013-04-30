@@ -20,8 +20,16 @@ protected:
   {
     memset (&mStream, 0, sizeof (mStream));
     memset (&mSource, 0, sizeof (mSource));
-    mConfig.winsize = XD3_ALLOCSIZE;
-    mSource.blksize = XD3_ALLOCSIZE;
+
+    mWinSize = XD3_DEFAULT_WINSIZE;
+
+    uv_fs_t aUvReq;
+    int aRet = uv_fs_fstat(uv_default_loop(), &aUvReq, mSrc, NULL);
+    if (aRet >= 0 && aUvReq.statbuf.st_size < mWinSize)
+      mWinSize = aUvReq.statbuf.st_size;
+
+    mConfig.winsize = mWinSize;
+    mSource.blksize = mWinSize;
     mSource.curblk = (const uint8_t*) new char[mSource.blksize];
     mInputBuf = (void*) new char[mSource.blksize];
     xd3_init_config(&mConfig, XD3_ADLER32);
@@ -82,6 +90,8 @@ protected:
 
   bool mBusy;
   enum { eStart, eRun, eDone } mState;
+
+  int mWinSize;
 
   int mBuffMaxSize;
   char* mBuff;
@@ -291,8 +301,8 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     case XD3_INPUT: {
      aXd->mState = eRun;
      if (aXd->mOpType == eOpDiff) {
-        aXd->mInputBufRead = aXd->Read(aXd->mDst, aXd->mInputBuf, XD3_ALLOCSIZE, aXd->mFileOffset);
-        aXd->mFileOffset += XD3_ALLOCSIZE;
+        aXd->mInputBufRead = aXd->Read(aXd->mDst, aXd->mInputBuf, aXd->mWinSize, aXd->mFileOffset);
+        aXd->mFileOffset += aXd->mWinSize;
         if (aXd->mInputBufRead < 0)
           return;
       } else {
@@ -300,18 +310,18 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
           aXd->mInputBufRead = 0;
           aXd->mConsumedInput = false;
         }
-        if (aXd->mInputBufRead != XD3_ALLOCSIZE && aXd->mBuffLen != 0) {
-          int aReadSize = (aXd->mBuffLen < (int) XD3_ALLOCSIZE - aXd->mInputBufRead) ? aXd->mBuffLen : XD3_ALLOCSIZE - aXd->mInputBufRead;
+        if (aXd->mInputBufRead != aXd->mWinSize && aXd->mBuffLen != 0) {
+          int aReadSize = (aXd->mBuffLen < (int) aXd->mWinSize - aXd->mInputBufRead) ? aXd->mBuffLen : aXd->mWinSize - aXd->mInputBufRead;
           if (aReadSize != 0) {
             memcpy((char*) aXd->mInputBuf + aXd->mInputBufRead, aXd->mBuff + aXd->mBuffMaxSize - aXd->mBuffLen, aReadSize);
             aXd->mBuffLen -= aReadSize;
             aXd->mInputBufRead += aReadSize;
           }
-          if (aXd->mInputBufRead != XD3_ALLOCSIZE || aXd->mBuffLen == 0) 
+          if (aXd->mInputBufRead != aXd->mWinSize || aXd->mBuffLen == 0) 
             return;
         }
       }
-      if (aXd->mInputBufRead < (int) XD3_ALLOCSIZE)
+      if (aXd->mInputBufRead < (int) aXd->mWinSize)
         xd3_set_flags(&aXd->mStream, XD3_FLUSH | aXd->mStream.flags);
       xd3_avail_input(&aXd->mStream, (const uint8_t*) aXd->mInputBuf, aXd->mInputBufRead);
       aXd->mConsumedInput = true;
@@ -343,7 +353,7 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
       return;
     }
     aAct = aXd->mOpType == eOpDiff ? xd3_encode_input(&aXd->mStream) : xd3_decode_input(&aXd->mStream);
-  } while (aXd->mInputBufRead == XD3_ALLOCSIZE || aAct != XD3_INPUT || aXd->mState == eStart);
+  } while (aXd->mInputBufRead == aXd->mWinSize || aAct != XD3_INPUT || aXd->mState == eStart);
 
   aXd->mState = eDone;
 }
