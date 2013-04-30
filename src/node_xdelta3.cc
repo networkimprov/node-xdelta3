@@ -276,6 +276,9 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
 
+  if (aXd->mErrType != eErrNone)
+    return;
+
   if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream == aXd->mStream.avail_out)
       xd3_consume_output(&aXd->mStream);
 
