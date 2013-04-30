@@ -8,8 +8,11 @@ var util = require('util');
 var xdelta = require('./build/Release/node_xdelta3.node');
 
 
-function DiffStream(src, dst) {
-  stream.Readable.call(this);
+function DiffStream(src, dst, opt) {
+  if (typeof(opt) != 'undefined')
+    stream.Readable.call(this, opt);
+  else
+    stream.Readable.call(this);
   this.diffObj = new xdelta.XdeltaDiff(src, dst);
 }
 util.inherits(DiffStream, stream.Readable);
@@ -26,7 +29,10 @@ DiffStream.prototype._read = function(size) {
 
 
 function PatchStream(src, dst) {
-  stream.Writable.call(this);
+  if (typeof(opt) != 'undefined')
+    stream.Writable.call(this, opt);
+  else
+    stream.Writable.call(this);
   this.patchObj = new xdelta.XdeltaPatch(src, dst);
   this.on('finish', function () { 
     var that = this;
