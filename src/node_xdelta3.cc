@@ -18,8 +18,8 @@ protected:
   XdeltaOp(int s, int d, OpType op)
   : ObjectWrap(), mOpType(op), mSrc(s), mDst(d), mBusy(false), mErrType(eErrNone)
   {
-    memset (&mStream, 0, sizeof (mStream));
-    memset (&mSource, 0, sizeof (mSource));
+    memset (&mStream, 0, sizeof mStream);
+    memset (&mSource, 0, sizeof mSource);
 
     mWinSize = XD3_DEFAULT_WINSIZE;
 
@@ -56,8 +56,8 @@ protected:
     uv_queue_work(uv_default_loop(), aReq, OpChunked_pool, OpChunked_done);
   }
   virtual void FinishAsync() {
+    this->Unref();
     mBusy = false;
-    Unref();
     mCallback.Dispose();
   }
   int Read(int fd, void* buf, size_t size, size_t offset) {
@@ -82,7 +82,7 @@ protected:
   static void OpChunked_pool(uv_work_t* req);
   static void OpChunked_done(uv_work_t* req, int );
 
-  void OpChunked_callback(Local<Function> callback);
+  void OpChunked_callback(Handle<Function> callback);
 
   OpType mOpType;
   int mSrc, mDst;
@@ -113,30 +113,30 @@ protected:
 
 class XdeltaDiff : public XdeltaOp {
 public:
-  static Persistent<FunctionTemplate> constructor_template;
   static void Init(Handle<Object> target);
+  static Persistent<FunctionTemplate> constructor_template;
 
 protected:
-  XdeltaDiff(int s, int d) : XdeltaOp(s, d, eOpDiff) {
-    mBuffMemSize = 0;
-  };
-  ~XdeltaDiff() {
-    if (mBuff) delete[] mBuff;
-  }
-
   static Handle<Value> New(const Arguments& args);
   static Handle<Value> DiffChunked(const Arguments& args);
+
+  XdeltaDiff(int s, int d) : XdeltaOp(s, d, eOpDiff), mBuffMemSize(0) {}
+  ~XdeltaDiff() {
+    if (mBuffMemSize > 0)
+      delete[] mBuff;
+  }
 
   int mBuffMemSize;
 };
 
 class XdeltaPatch : public XdeltaOp {
 public:
-  static Persistent<FunctionTemplate> constructor_template;
   static void Init(Handle<Object> target);
+  static Persistent<FunctionTemplate> constructor_template;
 
 protected:
-  Persistent<Object> mBufferObj;
+  static Handle<Value> New(const Arguments& args);
+  static Handle<Value> PatchChunked(const Arguments& args);
 
   XdeltaPatch(int s, int d) : XdeltaOp(s, d, eOpPatch) { };
 
@@ -145,8 +145,7 @@ protected:
     mBufferObj.Dispose();
   }
 
-  static Handle<Value> New(const Arguments& args);
-  static Handle<Value> PatchChunked(const Arguments& args);
+  Persistent<Object> mBufferObj;
 };
 
 void init(Handle<Object> exports) {
@@ -196,14 +195,12 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
   if (aXd->mBusy)
     return ThrowException(Exception::TypeError(String::New("object busy with async op")));
 
-  int aSize = args[0]->Uint32Value();
-  if (aSize > aXd->mBuffMemSize) {
-    if (aXd->mBuffMemSize != 0)
+  aXd->mBuffMaxSize = args[0]->Uint32Value();
+  if (aXd->mBuffMaxSize > aXd->mBuffMemSize) {
+    if (aXd->mBuffMemSize > 0)
       delete[] aXd->mBuff;
-    aXd->mBuffMemSize = aSize;
-    aXd->mBuff = new char[aXd->mBuffMemSize];
+    aXd->mBuff = new char[aXd->mBuffMemSize = aXd->mBuffMaxSize];
   }
-  aXd->mBuffMaxSize = aSize;
   aXd->mBuffLen = 0;
 
   if (aXd->mWroteFromStream < aXd->mStream.avail_out) { //if there is something left in the out stream to copy to aXd->mBuff
@@ -260,6 +257,7 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 
   if (aXd->mBusy)
     return ThrowException(Exception::TypeError(String::New("object busy with async op")));
+    
   if (args.Length() == 1) {
     aXd->mBuffMaxSize = 0;
   } else {
@@ -374,19 +372,18 @@ void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
   delete req;
 }
 
-void XdeltaOp::OpChunked_callback(Local<Function> callback) {
+void XdeltaOp::OpChunked_callback(Handle<Function> callback) {
   Handle<Value> aArgv[2];
-  int aArgc;
+  int aArgc = 0;
 
   if (mErrType != eErrNone) {
-    aArgv[0] = String::New(mErrType == eErrUv ? uv_strerror(mUvErr) : mXdErr.c_str());
-    aArgc = 1;
+    aArgv[aArgc++] = String::New(mErrType == eErrUv ? uv_strerror(mUvErr) : mXdErr.c_str());
   } else if (mState == eDone && mBuffLen == 0) {
-    aArgc = 0;
+    aArgv[aArgc++] = Undefined();
+    aArgv[aArgc++] = Null();
   } else {
-    aArgc = 2;
-    aArgv[0] = Undefined();
-    aArgv[1] = Buffer::New(mBuff, mBuffLen)->handle_;
+    aArgv[aArgc++] = Undefined();
+    aArgv[aArgc++] = Buffer::New(mBuff, mBuffLen)->handle_;
   }
 
   TryCatch try_catch;
