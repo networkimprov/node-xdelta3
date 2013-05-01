@@ -79,9 +79,8 @@ protected:
     return aBytesWrote - size;
   }
 
-  static void OpChunked_pool(uv_work_t* req);
-  static void OpChunked_done(uv_work_t* req, int );
-
+  static void OpChunked_pool(uv_work_t* req); //fix define a member function for each of these; static function calls it
+  static void OpChunked_done(uv_work_t* req, int ); //fix OpChunked_ prefix not nec
   void OpChunked_callback(Handle<Function> callback);
 
   OpType mOpType;
