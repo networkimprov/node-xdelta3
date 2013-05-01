@@ -21,10 +21,10 @@ protected:
     memset (&mStream, 0, sizeof mStream);
     memset (&mSource, 0, sizeof mSource);
 
-    mWinSize = XD3_DEFAULT_WINSIZE;
+    mWinSize = XD3_DEFAULT_WINSIZE; //fix set from argument
 
     uv_fs_t aUvReq;
-    int aRet = uv_fs_fstat(uv_default_loop(), &aUvReq, mSrc, NULL);
+    int aRet = uv_fs_fstat(uv_default_loop(), &aUvReq, mSrc, NULL); //fix do in .js if no user-set winsize
     if (aRet >= 0 && aUvReq.statbuf.st_size < mWinSize)
       mWinSize = aUvReq.statbuf.st_size;
 
@@ -274,13 +274,13 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
 
-  if (aXd->mErrType != eErrNone)
+  if (aXd->mErrType != eErrNone) //fix combine with mState==eDone below and do in caller, skipping _pool?
     return;
 
   if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream == aXd->mStream.avail_out)
       xd3_consume_output(&aXd->mStream);
 
-  if (aXd->mState == eDone)
+  if (aXd->mState == eDone) //fix see above
     return;
 
   int aAct = aXd->mState == eStart ? XD3_GETSRCBLK : aXd->mOpType == eOpPatch ? XD3_INPUT : xd3_encode_input(&aXd->mStream);
