@@ -9,34 +9,28 @@ var xdelta = require('./build/Release/node_xdelta3.node');
 
 
 function DiffStream(src, dst, opt) {
-  if (typeof(opt) != 'undefined')
-    stream.Readable.call(this, opt);
-  else
-    stream.Readable.call(this);
+  stream.Readable.call(this, opt); //fix check opt for winsize; fs.fstat if none
   this.diffObj = new xdelta.XdeltaDiff(src, dst);
 }
 util.inherits(DiffStream, stream.Readable);
 
 DiffStream.prototype._read = function(size) {
   var that = this;
-  that.diffObj.diffChunked(size, function(err, data, nextTick) {
+  that.diffObj.diffChunked(size, function(err, data) {
     if (err)
       that.emit('error', err);
     else
-      that.push(typeof(data) === 'undefined' ? null : data);
+      that.push(data);
   });
 };
 
 
 function PatchStream(src, dst) {
-  if (typeof(opt) != 'undefined')
-    stream.Writable.call(this, opt);
-  else
-    stream.Writable.call(this);
+  stream.Writable.call(this, opt); //fix check opt for winsize
   this.patchObj = new xdelta.XdeltaPatch(src, dst);
   this.on('finish', function () { 
     var that = this;
-    that._end(function(err) {
+    that._end(function(err) { //fix if only use of _end(), just call patchChunked here
       if (err)
         that.emit('error', err);
       else
