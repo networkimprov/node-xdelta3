@@ -15,19 +15,12 @@ using namespace node;
 class XdeltaOp : public ObjectWrap {
 protected:
   enum OpType { eOpDiff, eOpPatch };
-  XdeltaOp(int s, int d, OpType op)
-  : ObjectWrap(), mOpType(op), mSrc(s), mDst(d), mBusy(false), mErrType(eErrNone)
+  XdeltaOp(int s, int d, int ws, OpType op)
+  : ObjectWrap(), mOpType(op), mSrc(s), mDst(d), mWinSize(ws), mBusy(false), mErrType(eErrNone)
   {
     memset (&mStream, 0, sizeof mStream);
     memset (&mSource, 0, sizeof mSource);
-
-    mWinSize = XD3_DEFAULT_WINSIZE; //fix set from argument
-
-    uv_fs_t aUvReq;
-    int aRet = uv_fs_fstat(uv_default_loop(), &aUvReq, mSrc, NULL); //fix do in .js if no user-set winsize
-    if (aRet >= 0 && aUvReq.statbuf.st_size < mWinSize)
-      mWinSize = aUvReq.statbuf.st_size;
-
+    
     mConfig.winsize = mWinSize;
     mSource.blksize = mWinSize;
     mSource.curblk = (const uint8_t*) new char[mSource.blksize];
@@ -87,10 +80,10 @@ protected:
   int mSrc, mDst;
   Persistent<Function> mCallback;
 
+  int mWinSize;
+
   bool mBusy;
   enum { eStart, eRun, eDone } mState;
-
-  int mWinSize;
 
   int mBuffMaxSize;
   char* mBuff;
@@ -119,7 +112,7 @@ protected:
   static Handle<Value> New(const Arguments& args);
   static Handle<Value> DiffChunked(const Arguments& args);
 
-  XdeltaDiff(int s, int d) : XdeltaOp(s, d, eOpDiff), mBuffMemSize(0) {}
+  XdeltaDiff(int s, int d, int ws) : XdeltaOp(s, d, ws, eOpDiff), mBuffMemSize(0) {}
   ~XdeltaDiff() {
     if (mBuffMemSize > 0)
       delete[] mBuff;
@@ -137,7 +130,7 @@ protected:
   static Handle<Value> New(const Arguments& args);
   static Handle<Value> PatchChunked(const Arguments& args);
 
-  XdeltaPatch(int s, int d) : XdeltaOp(s, d, eOpPatch) { };
+  XdeltaPatch(int s, int d, int ws) : XdeltaOp(s, d, ws, eOpPatch) { };
 
   void FinishAsync() {
     XdeltaOp::FinishAsync();
@@ -150,6 +143,8 @@ protected:
 void init(Handle<Object> exports) {
   XdeltaDiff::Init(exports);
   XdeltaPatch::Init(exports);
+
+  exports->Set(String::NewSymbol("DEFAULT_WINSIZE"), Integer::New(XD3_DEFAULT_WINSIZE), ReadOnly);
 }
 
 NODE_MODULE(node_xdelta3, init);
@@ -173,10 +168,10 @@ void XdeltaDiff::Init(Handle<Object> target) {
 Handle<Value> XdeltaDiff::New(const Arguments& args) {
   HandleScope scope;
 
-  if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsInt32())
-    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd)")));
+  if (args.Length() < 3 || !args[0]->IsInt32() || !args[1]->IsInt32() || !args[2]->IsInt32())
+    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd, uint)")));
 
-  XdeltaDiff* aXD = new XdeltaDiff(args[0]->Uint32Value(), args[1]->Uint32Value());
+  XdeltaDiff* aXD = new XdeltaDiff(args[0]->Uint32Value(), args[1]->Uint32Value(), args[2]->Uint32Value());
 
   aXD->Wrap(args.This());
 
@@ -236,10 +231,10 @@ void XdeltaPatch::Init(Handle<Object> target) {
 Handle<Value> XdeltaPatch::New(const Arguments& args) {
   HandleScope scope;
 
-  if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsInt32())
-    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd)")));
+  if (args.Length() < 3 || !args[0]->IsInt32() || !args[1]->IsInt32() || !args[2]->IsInt32())
+    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd, uint)")));
 
-  XdeltaPatch* aXD = new XdeltaPatch(args[0]->Uint32Value(), args[1]->Uint32Value());
+  XdeltaPatch* aXD = new XdeltaPatch(args[0]->Uint32Value(), args[1]->Uint32Value(), args[2]->Uint32Value());
 
   aXD->Wrap(args.This());
 
