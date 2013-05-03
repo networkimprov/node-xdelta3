@@ -41,6 +41,9 @@ protected:
     xd3_free_stream(&mStream);
   }
   void StartAsync(Handle<Function> fn) {
+    if (mErrType != eErrNone || mState == eDone)
+      OpChunked_callback(fn);
+
     mCallback = Persistent<Function>::New(fn);
     mBusy = true;
     this->Ref();
@@ -268,14 +271,8 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 void XdeltaOp::OpChunked_pool(uv_work_t* req) {
   XdeltaDiff* aXd = (XdeltaDiff*) req->data;
 
-  if (aXd->mErrType != eErrNone) //fix combine with mState==eDone below and do in caller, skipping _pool?
-    return;
-
   if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream == aXd->mStream.avail_out)
       xd3_consume_output(&aXd->mStream);
-
-  if (aXd->mState == eDone) //fix see above
-    return;
 
   int aAct = aXd->mState == eStart ? XD3_GETSRCBLK : aXd->mOpType == eOpPatch ? XD3_INPUT : xd3_encode_input(&aXd->mStream);
   do {
