@@ -42,7 +42,7 @@ protected:
   }
   void StartAsync(Handle<Function> fn) {
     if (mErrType != eErrNone || mState == eDone)
-      Callback(fn);
+      Callback(fn);//fix this belongs in the diff/patch calls; it's an alternative to StartAsync
 
     mCallback = Persistent<Function>::New(fn);
     mBusy = true;
@@ -273,7 +273,7 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 
 void XdeltaOp::Pool() {
   if (mOpType == eOpDiff && mWroteFromStream == mStream.avail_out)
-      xd3_consume_output(&mStream);
+    xd3_consume_output(&mStream);
 
   int aAct = mState == eStart ? XD3_GETSRCBLK : mOpType == eOpPatch ? XD3_INPUT : xd3_encode_input(&mStream);
   do {
