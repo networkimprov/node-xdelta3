@@ -31,7 +31,7 @@ function PatchStream(src, dst, opt) {
   this.patchObj = new xdelta.XdeltaPatch(src, dst, opt && 'winsize' in opt ? opt.winsize : Math.min(fs.fstatSync(src).size, xdelta.DEFAULT_WINSIZE));
   this.on('finish', function () { 
     var that = this;
-    that._end(function(err) { //fix if only use of _end(), just call patchChunked here
+    that.patchObj.patchChunked(function(err) {
       if (err)
         that.emit('error', err);
       else
@@ -43,8 +43,4 @@ util.inherits(PatchStream, stream.Writable);
 
 PatchStream.prototype._write = function (chunk, encoding, callback) {
   this.patchObj.patchChunked(chunk, callback);
-};
-
-PatchStream.prototype._end = function (callback) {
-  this.patchObj.patchChunked(callback);
 };
