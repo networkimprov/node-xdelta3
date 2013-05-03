@@ -42,7 +42,7 @@ protected:
   }
   void StartAsync(Handle<Function> fn) {
     if (mErrType != eErrNone || mState == eDone)
-      OpChunked_callback(fn);
+      Callback(fn);
 
     mCallback = Persistent<Function>::New(fn);
     mBusy = true;
@@ -75,9 +75,12 @@ protected:
     return aBytesWrote - size;
   }
 
-  static void OpChunked_pool(uv_work_t* req); //fix define a member function for each of these; static function calls it
-  static void OpChunked_done(uv_work_t* req, int ); //fix OpChunked_ prefix not nec
-  void OpChunked_callback(Handle<Function> callback);
+  static void OpChunked_pool(uv_work_t* req) { ((XdeltaOp*) req->data)->Pool(); }; //fix rename
+  static void OpChunked_done(uv_work_t* req, int ) { ((XdeltaOp*) req->data)->Done();  delete req; }; //fix rename
+
+  void Pool();
+  void Done();
+  void Callback(Handle<Function> callback);
 
   OpType mOpType;
   int mSrc, mDst;
@@ -208,7 +211,7 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
   }
 
   if (aXd->mWroteFromStream < aXd->mStream.avail_out)
-    aXd->OpChunked_callback(Local<Function>::Cast(args[1]));
+    aXd->Callback(Local<Function>::Cast(args[1]));
   else
     aXd->StartAsync(Local<Function>::Cast(args[1]));
     
@@ -268,71 +271,69 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
   return args.This();
 }
 
-void XdeltaOp::OpChunked_pool(uv_work_t* req) {
-  XdeltaDiff* aXd = (XdeltaDiff*) req->data;
+void XdeltaOp::Pool() {
+  if (mOpType == eOpDiff && mWroteFromStream == mStream.avail_out)
+      xd3_consume_output(&mStream);
 
-  if (aXd->mOpType == eOpDiff && aXd->mWroteFromStream == aXd->mStream.avail_out)
-      xd3_consume_output(&aXd->mStream);
-
-  int aAct = aXd->mState == eStart ? XD3_GETSRCBLK : aXd->mOpType == eOpPatch ? XD3_INPUT : xd3_encode_input(&aXd->mStream);
+  int aAct = mState == eStart ? XD3_GETSRCBLK : mOpType == eOpPatch ? XD3_INPUT : xd3_encode_input(&mStream);
   do {
     switch (aAct) {
     case XD3_GETSRCBLK: {
-      int aBytesRead = aXd->Read(aXd->mSrc, (void*) aXd->mSource.curblk, aXd->mSource.blksize, aXd->mSource.blksize * aXd->mSource.getblkno);
+      int aBytesRead = Read(mSrc, (void*) mSource.curblk, mSource.blksize, mSource.blksize * mSource.getblkno);
       if (aBytesRead < 0)
         return;
-      aXd->mSource.onblk = aBytesRead;
-      aXd->mSource.curblkno = aXd->mSource.getblkno;
-      if (aXd->mState == eStart) {
-        xd3_set_source(&aXd->mStream, &aXd->mSource);
+      mSource.onblk = aBytesRead;
+      mSource.curblkno = mSource.getblkno;
+      if (mState == eStart) {
+        xd3_set_source(&mStream, &mSource);
         aAct = XD3_INPUT;
         continue;
       }
       break; 
     }
     case XD3_INPUT: {
-     aXd->mState = eRun;
-     if (aXd->mOpType == eOpDiff) {
-        aXd->mInputBufRead = aXd->Read(aXd->mDst, aXd->mInputBuf, aXd->mWinSize, aXd->mFileOffset);
-        aXd->mFileOffset += aXd->mWinSize;
-        if (aXd->mInputBufRead < 0)
+     mState = eRun;
+     if (mOpType == eOpDiff) {
+        mInputBufRead = Read(mDst, mInputBuf, mWinSize, mFileOffset);
+        mFileOffset += mWinSize;
+        if (mInputBufRead < 0)
           return;
       } else {
-        if (aXd->mConsumedInput) {
-          aXd->mInputBufRead = 0;
-          aXd->mConsumedInput = false;
+        if (mConsumedInput) {
+          mInputBufRead = 0;
+          mConsumedInput = false;
         }
-        if (aXd->mInputBufRead != aXd->mWinSize && aXd->mBuffLen != 0) {
-          int aReadSize = (aXd->mBuffLen < (int) aXd->mWinSize - aXd->mInputBufRead) ? aXd->mBuffLen : aXd->mWinSize - aXd->mInputBufRead;
+        if (mInputBufRead != mWinSize && mBuffLen != 0) {
+          int aReadSize = (mBuffLen < (int) mWinSize - mInputBufRead) ? mBuffLen : mWinSize - mInputBufRead;
           if (aReadSize != 0) {
-            memcpy((char*) aXd->mInputBuf + aXd->mInputBufRead, aXd->mBuff + aXd->mBuffMaxSize - aXd->mBuffLen, aReadSize);
-            aXd->mBuffLen -= aReadSize;
-            aXd->mInputBufRead += aReadSize;
+            memcpy((char*) mInputBuf + mInputBufRead, mBuff + mBuffMaxSize - mBuffLen, aReadSize);
+            mBuffLen -= aReadSize;
+            mInputBufRead += aReadSize;
           }
-          if (aXd->mInputBufRead != aXd->mWinSize || aXd->mBuffLen == 0) 
+          if (mInputBufRead != mWinSize || mBuffLen == 0) 
             return;
         }
       }
-      if (aXd->mInputBufRead < (int) aXd->mWinSize)
-        xd3_set_flags(&aXd->mStream, XD3_FLUSH | aXd->mStream.flags);
-      xd3_avail_input(&aXd->mStream, (const uint8_t*) aXd->mInputBuf, aXd->mInputBufRead);
-      aXd->mConsumedInput = true;
+      if (mInputBufRead < (int) mWinSize)
+        xd3_set_flags(&mStream, XD3_FLUSH | mStream.flags);
+      xd3_avail_input(&mStream, (const uint8_t*) mInputBuf, mInputBufRead);
+      mConsumedInput = true;
       break;
     }
     case XD3_OUTPUT: {
-      if (aXd->mOpType == eOpDiff) {
-        int aWriteSize = ((int)aXd->mStream.avail_out > aXd->mBuffMaxSize - aXd->mBuffLen) ? aXd->mBuffMaxSize - aXd->mBuffLen : aXd->mStream.avail_out;
-        memcpy(aXd->mBuff + aXd->mBuffLen, aXd->mStream.next_out, aWriteSize);
-        aXd->mBuffLen += aWriteSize;
-        aXd->mWroteFromStream = aWriteSize;
-        if (aXd->mWroteFromStream < aXd->mStream.avail_out) //diff buffer is full
+      if (mOpType == eOpDiff) {
+        int aWriteSize = ((int)mStream.avail_out > mBuffMaxSize - mBuffLen) ? mBuffMaxSize - mBuffLen : mStream.avail_out;
+        memcpy(mBuff + mBuffLen, mStream.next_out, aWriteSize);
+        mBuffLen += aWriteSize;
+        mWroteFromStream = aWriteSize;
+        if (mWroteFromStream < mStream.avail_out) //diff buffer is full
           return;
       } else {
-        if (aXd->Write(aXd->mDst, aXd->mStream.next_out, (int)aXd->mStream.avail_out, aXd->mFileOffset) < 0)
+        if (Write(mDst, mStream.next_out, (int)mStream.avail_out, mFileOffset) < 0)
           return;
-        aXd->mFileOffset += (int)aXd->mStream.avail_out;
+        mFileOffset += (int)mStream.avail_out;
       }
-      xd3_consume_output(&aXd->mStream);
+      xd3_consume_output(&mStream);
       break;
     }
     case XD3_GOTHEADER:
@@ -340,30 +341,27 @@ void XdeltaOp::OpChunked_pool(uv_work_t* req) {
     case XD3_WINFINISH:
       break;
     default:
-      aXd->mErrType = eErrXd;
-      aXd->mXdErr = aXd->mStream.msg;
+      mErrType = eErrXd;
+      mXdErr = mStream.msg;
       return;
     }
-    aAct = aXd->mOpType == eOpDiff ? xd3_encode_input(&aXd->mStream) : xd3_decode_input(&aXd->mStream);
-  } while (aXd->mInputBufRead == aXd->mWinSize || aAct != XD3_INPUT || aXd->mState == eStart);
+    aAct = mOpType == eOpDiff ? xd3_encode_input(&mStream) : xd3_decode_input(&mStream);
+  } while (mInputBufRead == mWinSize || aAct != XD3_INPUT || mState == eStart);
 
-  aXd->mState = eDone;
+  mState = eDone;
 }
 
-void XdeltaOp::OpChunked_done(uv_work_t* req, int ) {
+void XdeltaOp::Done() {
   HandleScope scope;
-  XdeltaDiff* aXd = (XdeltaDiff*) req->data;
 
-  Local<Function> aCallback(Local<Function>::New(aXd->mCallback));
+  Local<Function> aCallback(Local<Function>::New(mCallback));
 
-  aXd->FinishAsync();
+  FinishAsync();
 
-  aXd->OpChunked_callback(aCallback);
-
-  delete req;
+  Callback(aCallback);
 }
 
-void XdeltaOp::OpChunked_callback(Handle<Function> callback) {
+void XdeltaOp::Callback(Handle<Function> callback) {
   Handle<Value> aArgv[2];
   int aArgc = 0;
 
