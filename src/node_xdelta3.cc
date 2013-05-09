@@ -46,7 +46,7 @@ protected:
     this->Ref();
     uv_work_t* aReq = new uv_work_t;
     aReq->data = this;
-    uv_queue_work(uv_default_loop(), aReq, OpChunked_pool, OpChunked_done);
+    uv_queue_work(uv_default_loop(), aReq, Work_pool, Work_done);
   }
   virtual void FinishAsync() {
     this->Unref();
@@ -72,8 +72,8 @@ protected:
     return aBytesWrote - size;
   }
 
-  static void OpChunked_pool(uv_work_t* req) { ((XdeltaOp*) req->data)->Pool(); }; //fix rename
-  static void OpChunked_done(uv_work_t* req, int ) { ((XdeltaOp*) req->data)->Done();  delete req; }; //fix rename
+  static void Work_pool(uv_work_t* req) { ((XdeltaOp*) req->data)->Pool(); };
+  static void Work_done(uv_work_t* req, int ) { ((XdeltaOp*) req->data)->Done();  delete req; };
 
   void Pool();
   void Done();
