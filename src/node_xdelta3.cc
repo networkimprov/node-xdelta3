@@ -41,9 +41,6 @@ protected:
     xd3_free_stream(&mStream);
   }
   void StartAsync(Handle<Function> fn) {
-    if (mErrType != eErrNone || mState == eDone)
-      Callback(fn);//fix this belongs in the diff/patch calls; it's an alternative to StartAsync
-
     mCallback = Persistent<Function>::New(fn);
     mBusy = true;
     this->Ref();
@@ -210,7 +207,9 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) {
     aXd->mWroteFromStream += aWriteSize;
   }
 
-  if (aXd->mWroteFromStream < aXd->mStream.avail_out)
+  if (aXd->mErrType != eErrNone || aXd->mState == eDone)
+    aXd->Callback(Local<Function>::Cast(args[1]));
+  else if (aXd->mWroteFromStream < aXd->mStream.avail_out)
     aXd->Callback(Local<Function>::Cast(args[1]));
   else
     aXd->StartAsync(Local<Function>::Cast(args[1]));
@@ -257,6 +256,11 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
 
   if (aXd->mBusy)
     return ThrowException(Exception::TypeError(String::New("object busy with async op")));
+
+  if (aXd->mErrType != eErrNone || aXd->mState == eDone) {
+    aXd->Callback(Local<Function>::Cast(args[args.Length()-1]));
+    return args.This();
+  }
     
   if (args.Length() == 1) {
     aXd->mBuffMaxSize = 0;
@@ -266,6 +270,7 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args) {
     aXd->mBuff = Buffer::Data(aXd->mBufferObj);
   }
   aXd->mBuffLen = aXd->mBuffMaxSize;
+
   aXd->StartAsync(Local<Function>::Cast(args[args.Length()-1]));
 
   return args.This();
