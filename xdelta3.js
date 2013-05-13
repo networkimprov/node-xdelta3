@@ -11,7 +11,7 @@ var xdelta = require('./build/Release/node_xdelta3.node');
 
 function DiffStream(src, dst, opt) {
   stream.Readable.call(this, opt || {});
-  this.diffObj = new xdelta.XdeltaDiff(src, dst, opt && 'winsize' in opt ? opt.winsize : Math.min(fs.fstatSync(src).size, xdelta.DEFAULT_WINSIZE));
+  this.diffObj = new xdelta.XdeltaDiff(src, dst, opt || {});
 }
 util.inherits(DiffStream, stream.Readable);
 
@@ -28,7 +28,7 @@ DiffStream.prototype._read = function(size) {
 
 function PatchStream(src, dst, opt) {
   stream.Writable.call(this, opt || {});
-  this.patchObj = new xdelta.XdeltaPatch(src, dst, opt && 'winsize' in opt ? opt.winsize : Math.min(fs.fstatSync(src).size, xdelta.DEFAULT_WINSIZE));
+  this.patchObj = new xdelta.XdeltaPatch(src, dst, opt || {});
   this.on('finish', function () { 
     var that = this;
     that.patchObj.patchChunked(function(err) {

@@ -15,14 +15,14 @@ using namespace node;
 class XdeltaOp : public ObjectWrap {
 protected:
   enum OpType { eOpDiff, eOpPatch };
-  XdeltaOp(int s, int d, int ws, OpType op)
-  : ObjectWrap(), mOpType(op), mSrc(s), mDst(d), mWinSize(ws), mBusy(false), mErrType(eErrNone)
+  XdeltaOp(int s, int d, Local<Object> cfg, OpType op)
+  : ObjectWrap(), mOpType(op), mSrc(s), mDst(d), mBusy(false), mErrType(eErrNone)
   {
     memset (&mStream, 0, sizeof mStream);
     memset (&mSource, 0, sizeof mSource);
-    
-    mConfig.winsize = mWinSize;
-    mSource.blksize = mWinSize;
+
+    SetCfg(cfg);
+
     mSource.curblk = (const uint8_t*) new char[mSource.blksize];
     mInputBuf = (void*) new char[mSource.blksize];
     xd3_init_config(&mConfig, XD3_ADLER32);
@@ -39,6 +39,28 @@ protected:
     delete[] (char*)mInputBuf;
     xd3_close_stream(&mStream);
     xd3_free_stream(&mStream);
+  }
+  void SetCfg(Local<Object> cfg) {
+    mConfig.iopt_size = GetInt32CfgValue(cfg, "iopt_size", XD3_DEFAULT_IOPT_SIZE);
+    mConfig.sprevsz = GetInt32CfgValue(cfg, "sprevsz", XD3_DEFAULT_SPREVSZ);
+    mConfig.smatch_cfg = (xd3_smatch_cfg) GetInt32CfgValue(cfg, "smatch_cfg", XD3_SMATCH_DEFAULT);
+    mConfig.winsize = GetInt32CfgValue(cfg,"winsize", XD3_DEFAULT_WINSIZE);
+    mConfig.flags = GetInt32CfgValue(cfg, "flags", 0);
+    mConfig.sec_data.ngroups = GetInt32CfgValue(cfg, "sec_data_ngroups", 0);
+    mConfig.sec_inst.ngroups = GetInt32CfgValue(cfg, "sec_inst_ngroups", 0);
+    mConfig.sec_addr.ngroups = GetInt32CfgValue(cfg, "sec_addr_ngroups", 0);
+    mWinSize = mConfig.winsize;
+    mSource.blksize = mConfig.winsize;
+  }
+  static int GetInt32CfgValue(Local<Object> cfg, const char* str, int def) {
+    Local<String> aKey;
+    Local<Value> aVal;
+    if (cfg->Has(aKey = String::New(str))) {
+      aVal = cfg->Get(aKey);
+      if (aVal->IsInt32())
+        return aVal->Int32Value();
+    }
+    return def;
   }
   void StartAsync(Handle<Function> fn) {
     mCallback = Persistent<Function>::New(fn);
@@ -115,7 +137,7 @@ protected:
   static Handle<Value> New(const Arguments& args);
   static Handle<Value> DiffChunked(const Arguments& args);
 
-  XdeltaDiff(int s, int d, int ws) : XdeltaOp(s, d, ws, eOpDiff), mBuffMemSize(0) {}
+  XdeltaDiff(int s, int d, Local<Object> cfg) : XdeltaOp(s, d, cfg, eOpDiff), mBuffMemSize(0) {}
   ~XdeltaDiff() {
     if (mBuffMemSize > 0)
       delete[] mBuff;
@@ -133,7 +155,7 @@ protected:
   static Handle<Value> New(const Arguments& args);
   static Handle<Value> PatchChunked(const Arguments& args);
 
-  XdeltaPatch(int s, int d, int ws) : XdeltaOp(s, d, ws, eOpPatch) { };
+  XdeltaPatch(int s, int d, Local<Object> cfg) : XdeltaOp(s, d, cfg, eOpPatch) { };
 
   void FinishAsync() {
     XdeltaOp::FinishAsync();
@@ -147,7 +169,34 @@ void init(Handle<Object> exports) {
   XdeltaDiff::Init(exports);
   XdeltaPatch::Init(exports);
 
+  exports->Set(String::NewSymbol("DEFAULT_IOPT_SIZE"), Integer::New(XD3_DEFAULT_IOPT_SIZE), ReadOnly);
+  exports->Set(String::NewSymbol("DEFAULT_SPREVSZ"), Integer::New(XD3_DEFAULT_SPREVSZ), ReadOnly);
   exports->Set(String::NewSymbol("DEFAULT_WINSIZE"), Integer::New(XD3_DEFAULT_WINSIZE), ReadOnly);
+
+  exports->Set(String::NewSymbol("SMATCH_DEFAULT"), Integer::New(XD3_SMATCH_DEFAULT), ReadOnly);
+  exports->Set(String::NewSymbol("SMATCH_SLOW"), Integer::New(XD3_SMATCH_SLOW), ReadOnly);
+  exports->Set(String::NewSymbol("SMATCH_FAST"), Integer::New(XD3_SMATCH_FAST), ReadOnly);
+  exports->Set(String::NewSymbol("SMATCH_FASTER"), Integer::New(XD3_SMATCH_FASTER), ReadOnly);
+  exports->Set(String::NewSymbol("SMATCH_FASTEST"), Integer::New(XD3_SMATCH_FASTEST), ReadOnly);
+  exports->Set(String::NewSymbol("SMATCH_SOFT"), Integer::New(XD3_SMATCH_SOFT), ReadOnly);
+
+  exports->Set(String::NewSymbol("SEC_DJW"), Integer::New(XD3_SEC_DJW), ReadOnly);
+  exports->Set(String::NewSymbol("SEC_FGK"), Integer::New(XD3_SEC_FGK), ReadOnly);
+  exports->Set(String::NewSymbol("SEC_LZMA"), Integer::New(XD3_SEC_LZMA), ReadOnly);
+  exports->Set(String::NewSymbol("SEC_NODATA"), Integer::New(XD3_SEC_NODATA), ReadOnly);
+  exports->Set(String::NewSymbol("SEC_NOINST"), Integer::New(XD3_SEC_NOINST), ReadOnly);
+  exports->Set(String::NewSymbol("SEC_NOADDR"), Integer::New(XD3_SEC_NOADDR), ReadOnly);
+  exports->Set(String::NewSymbol("ADLER32"), Integer::New(XD3_ADLER32), ReadOnly);
+  exports->Set(String::NewSymbol("ADLER32_NOVER"), Integer::New(XD3_ADLER32_NOVER), ReadOnly);
+  exports->Set(String::NewSymbol("ALT_CODE_TABLE"), Integer::New( XD3_ALT_CODE_TABLE), ReadOnly);
+  exports->Set(String::NewSymbol("NOCOMPRESS"), Integer::New(XD3_NOCOMPRESS), ReadOnly);
+  exports->Set(String::NewSymbol("BEGREEDY"), Integer::New(XD3_BEGREEDY), ReadOnly);
+  exports->Set(String::NewSymbol("ADLER32_RECODE"), Integer::New(XD3_ADLER32_RECODE), ReadOnly);
+  exports->Set(String::NewSymbol("COMPLEVEL_1"), Integer::New(XD3_COMPLEVEL_1), ReadOnly);
+  exports->Set(String::NewSymbol("COMPLEVEL_2"), Integer::New(XD3_COMPLEVEL_2), ReadOnly);
+  exports->Set(String::NewSymbol("COMPLEVEL_3"), Integer::New(XD3_COMPLEVEL_3), ReadOnly);
+  exports->Set(String::NewSymbol("COMPLEVEL_6"), Integer::New(XD3_COMPLEVEL_6), ReadOnly);
+  exports->Set(String::NewSymbol("COMPLEVEL_9"), Integer::New(XD3_COMPLEVEL_9), ReadOnly);
 }
 
 NODE_MODULE(node_xdelta3, init);
@@ -171,10 +220,10 @@ void XdeltaDiff::Init(Handle<Object> target) {
 Handle<Value> XdeltaDiff::New(const Arguments& args) {
   HandleScope scope;
 
-  if (args.Length() < 3 || !args[0]->IsInt32() || !args[1]->IsInt32() || !args[2]->IsInt32())
-    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd, uint)")));
+  if (args.Length() < 3 || !args[0]->IsInt32() || !args[1]->IsInt32() || !args[2]->IsObject())
+    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd, obj)")));
 
-  XdeltaDiff* aXD = new XdeltaDiff(args[0]->Uint32Value(), args[1]->Uint32Value(), args[2]->Uint32Value());
+  XdeltaDiff* aXD = new XdeltaDiff(args[0]->Uint32Value(), args[1]->Uint32Value(), args[2]->ToObject());
 
   aXD->Wrap(args.This());
 
@@ -236,10 +285,10 @@ void XdeltaPatch::Init(Handle<Object> target) {
 Handle<Value> XdeltaPatch::New(const Arguments& args) {
   HandleScope scope;
 
-  if (args.Length() < 3 || !args[0]->IsInt32() || !args[1]->IsInt32() || !args[2]->IsInt32())
-    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd, uint)")));
+  if (args.Length() < 3 || !args[0]->IsInt32() || !args[1]->IsInt32() || !args[2]->IsObject())
+    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd, obj)")));
 
-  XdeltaPatch* aXD = new XdeltaPatch(args[0]->Uint32Value(), args[1]->Uint32Value(), args[2]->Uint32Value());
+  XdeltaPatch* aXD = new XdeltaPatch(args[0]->Uint32Value(), args[1]->Uint32Value(), args[2]->ToObject());
 
   aXD->Wrap(args.This());
 
