@@ -4,16 +4,26 @@ Asynchronous, non-blocking Node.js binding for Xdelta3 binary diff utility
 
 # API
 
-**xdelta3.DiffStream(fd src, fd dst, [obj opt])**  
-src - original file  
-dst - file to generate diff with  
-opt - optional stream.Readable options, winsize overrides xdelta default  
+**xdelta3.DiffStream(fd src, fd dst, [obj opt])**
+* src - original file
+* dst - file to generate diff with
+* opt - optional stream.Readable and xdelta3 configuration options
+ * iopt_size - default XD3_DEFAULT_IOPT_SIZE
+ * sprevsz - default XD3_DEFAULT_SPREVSZ
+ * smatch_cfg - default XD3_SMATCH_DEFAULT,
+ * winsize - default XD3_DEFAULT_WINSIZE,
+ * flags - default 0
+ * sec_data_ngroups - default 0
+ * sec_inst_ngroups - default 0
+ * sec_addr_ngroups - default 0
+
 creates a readable stream  
 
-**xdelta3.PatchStream(fd src, fd dest, [obj opt]);**  
-src - original file  
-dest - file generated from diff  
-opt - optional stream.Writable options, winsize overrides xdelta default  
+**xdelta3.PatchStream(fd src, fd dest, [obj opt]);**
+* src - original file
+* dest - file generated from diff
+* opt - optional stream.Writable and xdelta3 configuration options
+
 creates a writable stream
 
 # USAGE
