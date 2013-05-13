@@ -8,6 +8,8 @@ var fs = require('fs');
 var util = require('util');
 var xdelta = require('./build/Release/node_xdelta3.node');
 
+for (var aOpt in xdelta.constants)
+  module.exports[aOpt] = xdelta.constants[aOpt];
 
 function DiffStream(src, dst, opt) {
   stream.Readable.call(this, opt || {});

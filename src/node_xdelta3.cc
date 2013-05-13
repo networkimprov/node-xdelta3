@@ -20,12 +20,13 @@ protected:
   {
     memset (&mStream, 0, sizeof mStream);
     memset (&mSource, 0, sizeof mSource);
+    memset (&mConfig, 0, sizeof mConfig);
 
     SetCfg(cfg);
 
     mSource.curblk = (const uint8_t*) new char[mSource.blksize];
     mInputBuf = (void*) new char[mSource.blksize];
-    xd3_init_config(&mConfig, XD3_ADLER32);
+
     xd3_config_stream(&mStream, &mConfig);
     mState = eStart;
     mWroteFromStream = 0;
@@ -169,34 +170,39 @@ void init(Handle<Object> exports) {
   XdeltaDiff::Init(exports);
   XdeltaPatch::Init(exports);
 
-  exports->Set(String::NewSymbol("DEFAULT_IOPT_SIZE"), Integer::New(XD3_DEFAULT_IOPT_SIZE), ReadOnly);
-  exports->Set(String::NewSymbol("DEFAULT_SPREVSZ"), Integer::New(XD3_DEFAULT_SPREVSZ), ReadOnly);
-  exports->Set(String::NewSymbol("DEFAULT_WINSIZE"), Integer::New(XD3_DEFAULT_WINSIZE), ReadOnly);
+  Local<Object> aObj = Object::New();
+  aObj->Set(String::NewSymbol("SMATCH_SLOW"), Integer::New(XD3_SMATCH_SLOW), ReadOnly);
 
-  exports->Set(String::NewSymbol("SMATCH_DEFAULT"), Integer::New(XD3_SMATCH_DEFAULT), ReadOnly);
-  exports->Set(String::NewSymbol("SMATCH_SLOW"), Integer::New(XD3_SMATCH_SLOW), ReadOnly);
-  exports->Set(String::NewSymbol("SMATCH_FAST"), Integer::New(XD3_SMATCH_FAST), ReadOnly);
-  exports->Set(String::NewSymbol("SMATCH_FASTER"), Integer::New(XD3_SMATCH_FASTER), ReadOnly);
-  exports->Set(String::NewSymbol("SMATCH_FASTEST"), Integer::New(XD3_SMATCH_FASTEST), ReadOnly);
-  exports->Set(String::NewSymbol("SMATCH_SOFT"), Integer::New(XD3_SMATCH_SOFT), ReadOnly);
+  aObj->Set(String::NewSymbol("DEFAULT_IOPT_SIZE"), Integer::New(XD3_DEFAULT_IOPT_SIZE), ReadOnly);
+  aObj->Set(String::NewSymbol("DEFAULT_SPREVSZ"), Integer::New(XD3_DEFAULT_SPREVSZ), ReadOnly);
+  aObj->Set(String::NewSymbol("DEFAULT_WINSIZE"), Integer::New(XD3_DEFAULT_WINSIZE), ReadOnly);
 
-  exports->Set(String::NewSymbol("SEC_DJW"), Integer::New(XD3_SEC_DJW), ReadOnly);
-  exports->Set(String::NewSymbol("SEC_FGK"), Integer::New(XD3_SEC_FGK), ReadOnly);
-  exports->Set(String::NewSymbol("SEC_LZMA"), Integer::New(XD3_SEC_LZMA), ReadOnly);
-  exports->Set(String::NewSymbol("SEC_NODATA"), Integer::New(XD3_SEC_NODATA), ReadOnly);
-  exports->Set(String::NewSymbol("SEC_NOINST"), Integer::New(XD3_SEC_NOINST), ReadOnly);
-  exports->Set(String::NewSymbol("SEC_NOADDR"), Integer::New(XD3_SEC_NOADDR), ReadOnly);
-  exports->Set(String::NewSymbol("ADLER32"), Integer::New(XD3_ADLER32), ReadOnly);
-  exports->Set(String::NewSymbol("ADLER32_NOVER"), Integer::New(XD3_ADLER32_NOVER), ReadOnly);
-  exports->Set(String::NewSymbol("ALT_CODE_TABLE"), Integer::New( XD3_ALT_CODE_TABLE), ReadOnly);
-  exports->Set(String::NewSymbol("NOCOMPRESS"), Integer::New(XD3_NOCOMPRESS), ReadOnly);
-  exports->Set(String::NewSymbol("BEGREEDY"), Integer::New(XD3_BEGREEDY), ReadOnly);
-  exports->Set(String::NewSymbol("ADLER32_RECODE"), Integer::New(XD3_ADLER32_RECODE), ReadOnly);
-  exports->Set(String::NewSymbol("COMPLEVEL_1"), Integer::New(XD3_COMPLEVEL_1), ReadOnly);
-  exports->Set(String::NewSymbol("COMPLEVEL_2"), Integer::New(XD3_COMPLEVEL_2), ReadOnly);
-  exports->Set(String::NewSymbol("COMPLEVEL_3"), Integer::New(XD3_COMPLEVEL_3), ReadOnly);
-  exports->Set(String::NewSymbol("COMPLEVEL_6"), Integer::New(XD3_COMPLEVEL_6), ReadOnly);
-  exports->Set(String::NewSymbol("COMPLEVEL_9"), Integer::New(XD3_COMPLEVEL_9), ReadOnly);
+  aObj->Set(String::NewSymbol("SMATCH_DEFAULT"), Integer::New(XD3_SMATCH_DEFAULT), ReadOnly);
+  aObj->Set(String::NewSymbol("SMATCH_SLOW"), Integer::New(XD3_SMATCH_SLOW), ReadOnly);
+  aObj->Set(String::NewSymbol("SMATCH_FAST"), Integer::New(XD3_SMATCH_FAST), ReadOnly);
+  aObj->Set(String::NewSymbol("SMATCH_FASTER"), Integer::New(XD3_SMATCH_FASTER), ReadOnly);
+  aObj->Set(String::NewSymbol("SMATCH_FASTEST"), Integer::New(XD3_SMATCH_FASTEST), ReadOnly);
+  aObj->Set(String::NewSymbol("SMATCH_SOFT"), Integer::New(XD3_SMATCH_SOFT), ReadOnly);
+
+  aObj->Set(String::NewSymbol("SEC_DJW"), Integer::New(XD3_SEC_DJW), ReadOnly);
+  aObj->Set(String::NewSymbol("SEC_FGK"), Integer::New(XD3_SEC_FGK), ReadOnly);
+  aObj->Set(String::NewSymbol("SEC_LZMA"), Integer::New(XD3_SEC_LZMA), ReadOnly);
+  aObj->Set(String::NewSymbol("SEC_NODATA"), Integer::New(XD3_SEC_NODATA), ReadOnly);
+  aObj->Set(String::NewSymbol("SEC_NOINST"), Integer::New(XD3_SEC_NOINST), ReadOnly);
+  aObj->Set(String::NewSymbol("SEC_NOADDR"), Integer::New(XD3_SEC_NOADDR), ReadOnly);
+  aObj->Set(String::NewSymbol("ADLER32"), Integer::New(XD3_ADLER32), ReadOnly);
+  aObj->Set(String::NewSymbol("ADLER32_NOVER"), Integer::New(XD3_ADLER32_NOVER), ReadOnly);
+  aObj->Set(String::NewSymbol("ALT_CODE_TABLE"), Integer::New( XD3_ALT_CODE_TABLE), ReadOnly);
+  aObj->Set(String::NewSymbol("NOCOMPRESS"), Integer::New(XD3_NOCOMPRESS), ReadOnly);
+  aObj->Set(String::NewSymbol("BEGREEDY"), Integer::New(XD3_BEGREEDY), ReadOnly);
+  aObj->Set(String::NewSymbol("ADLER32_RECODE"), Integer::New(XD3_ADLER32_RECODE), ReadOnly);
+  aObj->Set(String::NewSymbol("COMPLEVEL_1"), Integer::New(XD3_COMPLEVEL_1), ReadOnly);
+  aObj->Set(String::NewSymbol("COMPLEVEL_2"), Integer::New(XD3_COMPLEVEL_2), ReadOnly);
+  aObj->Set(String::NewSymbol("COMPLEVEL_3"), Integer::New(XD3_COMPLEVEL_3), ReadOnly);
+  aObj->Set(String::NewSymbol("COMPLEVEL_6"), Integer::New(XD3_COMPLEVEL_6), ReadOnly);
+  aObj->Set(String::NewSymbol("COMPLEVEL_9"), Integer::New(XD3_COMPLEVEL_9), ReadOnly);
+
+  exports->Set(String::NewSymbol("constants"), aObj);
 }
 
 NODE_MODULE(node_xdelta3, init);
