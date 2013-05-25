@@ -21,7 +21,8 @@ aDelta.on('end', function() {
   var aDiff = Buffer.concat(aDiffBufferList);
   fs.closeSync(aSrcFd);
   fs.closeSync(aDstFd);
-  if (aDiff.length != 630125)
+
+  if (aDiff.length != 630634)
     console.log('FAIL: Basic Large Diff');
   else {
     console.log('OK:   Basic Large Diff');
