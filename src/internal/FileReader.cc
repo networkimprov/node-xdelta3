@@ -1,0 +1,37 @@
+#include "FileReader.h"
+
+///////////////////////////////////////////////////////////////////////////////
+FileReader::FileReader()
+{
+
+}
+
+///////////////////////////////////////////////////////////////////////////////
+FileReader::~FileReader()
+{}
+
+///////////////////////////////////////////////////////////////////////////////
+int FileReader::read(int fd, void* buf, size_t size, size_t offset)
+{
+  uv_fs_t aUvRequest;
+  int aBytesRead = uv_fs_read(uv_default_loop(), &aUvRequest, fd, buf, size, offset, NULL);
+
+  if (aBytesRead < 0 ) 
+  {
+    m_error = uv_last_error(uv_default_loop());
+  }
+ 
+  return aBytesRead;
+}
+
+///////////////////////////////////////////////////////////////////////////////
+const char* FileReader::readErrorMessage() const
+{
+    return uv_strerror(m_error);
+}
+
+///////////////////////////////////////////////////////////////////////////////
+uv_err_t FileReader::readError() const
+{
+    return m_error;
+}

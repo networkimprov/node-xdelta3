@@ -5,7 +5,7 @@ extern "C" {
 #include <node.h>
 #include <node_buffer.h>
 #include <v8.h>
-
+#include "internal/FileReader.h"
 #include <string>
 
 using namespace v8;
@@ -94,6 +94,29 @@ protected:
     }
     return aBytesWrote - size;
   }
+  bool loadSourceFile()
+  {
+    int aBytesRead = mReader.read(mSrc, 
+                                  const_cast<void*>( static_cast<const void*>( mSource.curblk ) ),
+                                  mSource.blksize, 
+                                  ( mSource.blksize * mSource.getblkno ));
+
+    if (aBytesRead < 0) 
+    {
+      mErrType = eErrUv;
+      mUvErr = mReader.readError();
+      return false;
+    }
+
+    mSource.onblk = aBytesRead;
+    mSource.curblkno = mSource.getblkno;
+    if (mState == eStart) 
+    {
+      xd3_set_source(&mStream, &mSource);
+    }
+
+    return true;
+  }
 
   static void Work_pool(uv_work_t* req) { ((XdeltaOp*) req->data)->Pool(); };
   static void Work_done(uv_work_t* req, int ) { ((XdeltaOp*) req->data)->Done();  delete req; };
@@ -107,6 +130,7 @@ protected:
   Persistent<Function> mCallback;
 
   int mWinSize;
+  FileReader mReader;
 
   bool mBusy;
   enum { eStart, eRun, eDone } mState;
@@ -339,13 +363,9 @@ void XdeltaOp::Pool() {
   do {
     switch (aAct) {
     case XD3_GETSRCBLK: {
-      int aBytesRead = Read(mSrc, (void*) mSource.curblk, mSource.blksize, mSource.blksize * mSource.getblkno);
-      if (aBytesRead < 0)
-        return;
-      mSource.onblk = aBytesRead;
-      mSource.curblkno = mSource.getblkno;
-      if (mState == eStart) {
-        xd3_set_source(&mStream, &mSource);
+      if ( !loadSourceFile() ) return;
+      if (mState == eStart) 
+      {
         aAct = XD3_INPUT;
         continue;
       }
