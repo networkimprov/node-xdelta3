@@ -76,15 +76,6 @@ protected:
     mBusy = false;
     mCallback.Dispose();
   }
-  int Read(int fd, void* buf, size_t size, size_t offset) {
-    uv_fs_t aUvReq;
-    int aBytesRead = uv_fs_read(uv_default_loop(), &aUvReq, fd, buf, size, offset, NULL);
-    if (aBytesRead < 0) {
-      mErrType = eErrUv;
-      mUvErr = uv_last_error(uv_default_loop());
-    }
-    return aBytesRead;
-  }
   int Write(int fd, void* buf, size_t size, size_t offset) { 
     uv_fs_t aUvReq;
     int aBytesWrote = uv_fs_write(uv_default_loop(), &aUvReq, fd, buf, size, offset, NULL);
@@ -116,6 +107,52 @@ protected:
     }
 
     return true;
+  }
+  bool loadSecondaryFile()
+  {
+    if (mOpType == eOpDiff)
+    {
+        mInputBufRead = mReader.read(mDst, mInputBuf, mWinSize, mFileOffset);
+        mFileOffset += mWinSize;
+
+        if (mInputBufRead < 0)
+        {
+          mErrType = eErrUv;
+          mUvErr = mReader.readError();
+          return false;
+        }
+    }
+    else
+    {
+        if (mConsumedInput)
+        {
+          mInputBufRead = 0;
+          mConsumedInput = false;
+        }
+
+        if (mInputBufRead != mWinSize && mBuffLen != 0)
+        {
+          int aReadSize = (mBuffLen < (int) mWinSize - mInputBufRead) ? mBuffLen : mWinSize - mInputBufRead;
+          if (aReadSize != 0)
+          {
+            memcpy((char*) mInputBuf + mInputBufRead, mBuff + mBuffMaxSize - mBuffLen, aReadSize);
+            mBuffLen -= aReadSize;
+            mInputBufRead += aReadSize;
+          }
+
+          if (mInputBufRead != mWinSize || mBuffLen == 0) return false;
+        }
+      }
+
+      if (mInputBufRead < (int) mWinSize)
+      {
+        xd3_set_flags(&mStream, XD3_FLUSH | mStream.flags);
+      }
+
+      xd3_avail_input(&mStream, (const uint8_t*) mInputBuf, mInputBufRead);
+      mConsumedInput = true;
+
+      return true;
   }
 
   static void Work_pool(uv_work_t* req) { ((XdeltaOp*) req->data)->Pool(); };
@@ -373,32 +410,8 @@ void XdeltaOp::Pool() {
     }
     case XD3_INPUT: {
      mState = eRun;
-     if (mOpType == eOpDiff) {
-        mInputBufRead = Read(mDst, mInputBuf, mWinSize, mFileOffset);
-        mFileOffset += mWinSize;
-        if (mInputBufRead < 0)
-          return;
-      } else {
-        if (mConsumedInput) {
-          mInputBufRead = 0;
-          mConsumedInput = false;
-        }
-        if (mInputBufRead != mWinSize && mBuffLen != 0) {
-          int aReadSize = (mBuffLen < (int) mWinSize - mInputBufRead) ? mBuffLen : mWinSize - mInputBufRead;
-          if (aReadSize != 0) {
-            memcpy((char*) mInputBuf + mInputBufRead, mBuff + mBuffMaxSize - mBuffLen, aReadSize);
-            mBuffLen -= aReadSize;
-            mInputBufRead += aReadSize;
-          }
-          if (mInputBufRead != mWinSize || mBuffLen == 0) 
-            return;
-        }
-      }
-      if (mInputBufRead < (int) mWinSize)
-        xd3_set_flags(&mStream, XD3_FLUSH | mStream.flags);
-      xd3_avail_input(&mStream, (const uint8_t*) mInputBuf, mInputBufRead);
-      mConsumedInput = true;
-      break;
+     if ( !loadSecondaryFile() ) return;
+     break;
     }
     case XD3_OUTPUT: {
       if (mOpType == eOpDiff) {
