@@ -108,41 +108,6 @@ bool XdeltaOp::loadSourceFile()
     return true;
 }
 
-bool XdeltaOp::loadSecondaryFile()
-{
-      if (mConsumedInput)
-      {
-          mInputBufRead = 0;
-          mConsumedInput = false;
-      }
-
-      if ( (mInputBufRead != mWinSize) && (mBuffLen != 0) )
-      {
-          int bytesRead = mWinSize - mInputBufRead;
-          if ( bytesRead < 0 ) bytesRead = 0;
-
-          int aReadSize = (mBuffLen < static_cast<unsigned int>( bytesRead ) ) ? mBuffLen : bytesRead;
-          if (aReadSize != 0)
-          {
-            memcpy((char*) mInputBuf + mInputBufRead, ( mBuff + mBuffMaxSize - mBuffLen ), aReadSize);
-            mBuffLen -= aReadSize;
-            mInputBufRead += aReadSize;
-          }
-
-          if ( (mInputBufRead != mWinSize) || (mBuffLen == 0) ) return false;
-      }
-
-      if (mInputBufRead < (int) mWinSize)
-      {
-        xd3_set_flags(&mStream, XD3_FLUSH | mStream.flags);
-      }
-
-      xd3_avail_input(&mStream, (const uint8_t*) mInputBuf, mInputBufRead);
-      mConsumedInput = true;
-
-      return true;
-}
-
 void XdeltaOp::Pool() 
 {
   if (mOpType == eOpDiff && mWroteFromStream == mStream.avail_out)
