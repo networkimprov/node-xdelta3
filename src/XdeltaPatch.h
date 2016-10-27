@@ -15,6 +15,7 @@ protected:
   static v8::Handle<v8::Value> New(const v8::Arguments& args);
   static v8::Handle<v8::Value> PatchChunked(const v8::Arguments& args);
   bool loadSecondaryFile() /* overrride */;
+  bool generateResult() /*override */;
 
   XdeltaPatch(int s, int d, v8::Local<v8::Object> cfg);
   void FinishAsync();

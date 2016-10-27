@@ -123,3 +123,20 @@ bool XdeltaDiff::loadSecondaryFile()
 
     return true;
 }
+
+bool XdeltaDiff::generateResult()
+{
+  unsigned int availableSpace = mBuffMaxSize - mBuffLen;
+  int aWriteSize = (mStream.avail_out > availableSpace ) ? availableSpace : mStream.avail_out;
+  memcpy(mBuff + mBuffLen, mStream.next_out, aWriteSize);
+  mBuffLen += aWriteSize;
+  mWroteFromStream = aWriteSize;
+
+  if (mWroteFromStream < mStream.avail_out) //diff buffer is full
+  {
+     return false;
+  }
+
+  xd3_consume_output(&mStream);
+  return true;
+}

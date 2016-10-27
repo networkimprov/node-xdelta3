@@ -122,3 +122,17 @@ bool XdeltaPatch::loadSecondaryFile()
 
       return true;
 }
+
+bool XdeltaPatch::generateResult()
+{
+    if ( !mWriter.write(mDst, mStream.next_out, (int)mStream.avail_out, mFileOffset) )
+    {
+        mErrType = eErrUv;
+        mUvErr = mWriter.writeError();
+        return false;
+    }
+
+    mFileOffset += (int)mStream.avail_out;
+    xd3_consume_output(&mStream);
+    return true;
+}

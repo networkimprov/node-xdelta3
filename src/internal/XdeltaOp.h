@@ -40,6 +40,7 @@ protected:
   virtual void FinishAsync();
   virtual bool loadSourceFile();
   virtual bool loadSecondaryFile() = 0;
+  virtual bool generateResult() = 0;
 
   static void Work_pool(uv_work_t* req);
   static void Work_done(uv_work_t* req, int );

@@ -138,30 +138,10 @@ void XdeltaOp::Pool()
     }
     case XD3_OUTPUT: 
     {
-      if (mOpType == eOpDiff) 
+      if ( !generateResult() )
       {
-        unsigned int availableSpace = mBuffMaxSize - mBuffLen;
-        int aWriteSize = (mStream.avail_out > availableSpace ) ? availableSpace : mStream.avail_out;
-        memcpy(mBuff + mBuffLen, mStream.next_out, aWriteSize);
-        mBuffLen += aWriteSize;
-        mWroteFromStream = aWriteSize;
-        if (mWroteFromStream < mStream.avail_out) //diff buffer is full
-        {
-          return;
-        }
-      } 
-      else 
-      {
-        if ( !mWriter.write(mDst, mStream.next_out, (int)mStream.avail_out, mFileOffset) )
-        {
-          mErrType = eErrUv;
-          mUvErr = mWriter.writeError();
-          return;
-        }
-
-        mFileOffset += (int)mStream.avail_out;
+        return;
       }
-      xd3_consume_output(&mStream);
       break;
     }
     case XD3_GOTHEADER:
