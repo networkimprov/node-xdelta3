@@ -59,11 +59,20 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args)
     return args.This();
   }
     
-  if (args.Length() == 1) {
+  if (args.Length() == 1) 
+  {
     aXd->mBuffMaxSize = 0;
-  } else {
+  } 
+  else 
+  {
     aXd->mBufferObj = Persistent<Object>::New(args[0]->ToObject());
-    aXd->mBuffMaxSize = Buffer::Length(aXd->mBufferObj);
+    
+    int bufferSize = Buffer::Length(aXd->mBufferObj);
+    if ( bufferSize < 0 ) 
+    {
+      bufferSize = 0;
+    }
+    aXd->mBuffMaxSize = static_cast<unsigned int>( bufferSize );
     aXd->mBuff = Buffer::Data(aXd->mBufferObj);
   }
   aXd->mBuffLen = aXd->mBuffMaxSize;

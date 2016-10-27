@@ -55,9 +55,9 @@ protected:
   FileReader mReader;
   bool mBusy;
   OperationState mState;
-  int mBuffMaxSize;
+  unsigned int mBuffMaxSize;
   char* mBuff;
-  int mBuffLen;
+  unsigned int mBuffLen;
   unsigned int mWroteFromStream;
   void* mInputBuf;
   int mInputBufRead;

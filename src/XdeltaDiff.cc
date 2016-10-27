@@ -78,7 +78,8 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args)
 
   if (aXd->mWroteFromStream < aXd->mStream.avail_out) //if there is something left in the out stream to copy to aXd->mBuff
   {
-    int aWriteSize = (aXd->mStream.avail_out - aXd->mWroteFromStream > aXd->mBuffMaxSize) ? aXd->mBuffMaxSize : aXd->mStream.avail_out - aXd->mWroteFromStream;
+    unsigned int availableSpace = aXd->mStream.avail_out - aXd->mWroteFromStream;
+    int aWriteSize = ( availableSpace > aXd->mBuffMaxSize ) ? aXd->mBuffMaxSize : availableSpace;
     memcpy(aXd->mBuff, aXd->mStream.next_out + aXd->mWroteFromStream, aWriteSize);
     aXd->mBuffLen += aWriteSize;
     aXd->mWroteFromStream += aWriteSize;

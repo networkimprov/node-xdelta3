@@ -142,17 +142,20 @@ bool XdeltaOp::loadSecondaryFile()
           mConsumedInput = false;
         }
 
-        if (mInputBufRead != mWinSize && mBuffLen != 0)
+        if ( (mInputBufRead != mWinSize) && (mBuffLen != 0) )
         {
-          int aReadSize = (mBuffLen < (int) mWinSize - mInputBufRead) ? mBuffLen : mWinSize - mInputBufRead;
+          int bytesRead = mWinSize - mInputBufRead;
+          if ( bytesRead < 0 ) bytesRead = 0;
+          
+          int aReadSize = (mBuffLen < static_cast<unsigned int>( bytesRead ) ) ? mBuffLen : bytesRead;
           if (aReadSize != 0)
           {
-            memcpy((char*) mInputBuf + mInputBufRead, mBuff + mBuffMaxSize - mBuffLen, aReadSize);
+            memcpy((char*) mInputBuf + mInputBufRead, ( mBuff + mBuffMaxSize - mBuffLen ), aReadSize);
             mBuffLen -= aReadSize;
             mInputBufRead += aReadSize;
           }
 
-          if (mInputBufRead != mWinSize || mBuffLen == 0) return false;
+          if ( (mInputBufRead != mWinSize) || (mBuffLen == 0) ) return false;
         }
       }
 
@@ -199,7 +202,8 @@ void XdeltaOp::Pool()
     {
       if (mOpType == eOpDiff) 
       {
-        int aWriteSize = ((int)mStream.avail_out > mBuffMaxSize - mBuffLen) ? mBuffMaxSize - mBuffLen : mStream.avail_out;
+        unsigned int availableSpace = mBuffMaxSize - mBuffLen;
+        int aWriteSize = (mStream.avail_out > availableSpace ) ? availableSpace : mStream.avail_out;
         memcpy(mBuff + mBuffLen, mStream.next_out, aWriteSize);
         mBuffLen += aWriteSize;
         mWroteFromStream = aWriteSize;
@@ -254,7 +258,7 @@ void XdeltaOp::Callback(Handle<Function> callback)
   {
     aArgv[aArgc++] = String::New(mErrType == eErrUv ? uv_strerror(mUvErr) : mXdErr.c_str());
   } 
-  else if (mState == eDone && mBuffLen == 0) 
+  else if ( (mState == eDone) && (mBuffLen == 0) ) 
   {
     aArgv[aArgc++] = Undefined();
     aArgv[aArgc++] = Null();
