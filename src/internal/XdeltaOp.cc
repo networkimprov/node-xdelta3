@@ -146,7 +146,7 @@ bool XdeltaOp::loadSecondaryFile()
         {
           int bytesRead = mWinSize - mInputBufRead;
           if ( bytesRead < 0 ) bytesRead = 0;
-          
+
           int aReadSize = (mBuffLen < static_cast<unsigned int>( bytesRead ) ) ? mBuffLen : bytesRead;
           if (aReadSize != 0)
           {
@@ -279,11 +279,23 @@ void XdeltaOp::Callback(Handle<Function> callback)
 
 void XdeltaOp::Work_pool(uv_work_t* req) 
 { 
-    ((XdeltaOp*) req->data)->Pool(); 
+    if ( req == NULL ) return;
+
+    XdeltaOp* op = static_cast<XdeltaOp*>( req->data );
+    if ( op != NULL )
+    {
+        op->Pool();
+    } 
 };
 
 void XdeltaOp::Work_done(uv_work_t* req, int ) 
 { 
-    ((XdeltaOp*) req->data)->Done();  
+    if ( req == NULL ) return;
+
+    XdeltaOp* op = static_cast<XdeltaOp*>( req->data );
+    if ( op != NULL )
+    {
+        op->Done();
+    }  
     delete req; 
 };
