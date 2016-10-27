@@ -101,6 +101,16 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args)
   return args.This();
 }
 
+void XdeltaDiff::Pool()
+{
+  if ( mWroteFromStream == mStream.avail_out )
+  {
+    xd3_consume_output(&mStream);
+  }
+
+  XdeltaOp::Pool();
+}
+
 bool XdeltaDiff::loadSecondaryFile()
 {
     mInputBufRead = mReader.read(mDst, mInputBuf, mWinSize, mFileOffset);

@@ -110,12 +110,8 @@ bool XdeltaOp::loadSourceFile()
 
 void XdeltaOp::Pool() 
 {
-  if (mOpType == eOpDiff && mWroteFromStream == mStream.avail_out)
-  {
-    xd3_consume_output(&mStream);
-  }
-
-  int aAct = mState == eStart ? XD3_GETSRCBLK : mOpType == eOpPatch ? XD3_INPUT : xd3_encode_input(&mStream);
+  int aAct = ( mState == eStart ) ? XD3_GETSRCBLK : 
+                                    ( mOpType == eOpPatch ) ? XD3_INPUT : xd3_encode_input(&mStream);
   do 
   {
     switch (aAct) 
@@ -153,6 +149,7 @@ void XdeltaOp::Pool()
       mXdErr = mStream.msg;
       return;
     }
+
     aAct = mOpType == eOpDiff ? xd3_encode_input(&mStream) : xd3_decode_input(&mStream);
   } while (mInputBufRead == mWinSize || aAct != XD3_INPUT || mState == eStart);
 

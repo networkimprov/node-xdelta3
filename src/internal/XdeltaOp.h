@@ -45,7 +45,7 @@ protected:
   static void Work_pool(uv_work_t* req);
   static void Work_done(uv_work_t* req, int );
 
-  void Pool();
+  virtual void Pool();
   void Done();
   void Callback(v8::Handle<v8::Function> callback);
 
