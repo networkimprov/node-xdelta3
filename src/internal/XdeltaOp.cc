@@ -110,28 +110,14 @@ bool XdeltaOp::loadSourceFile()
 
 bool XdeltaOp::loadSecondaryFile()
 {
-    if (mOpType == eOpDiff)
-    {
-        mInputBufRead = mReader.read(mDst, mInputBuf, mWinSize, mFileOffset);
-        mFileOffset += mWinSize;
-
-        if (mInputBufRead < 0)
-        {
-          mErrType = eErrUv;
-          mUvErr = mReader.readError();
-          return false;
-        }
-    }
-    else
-    {
-        if (mConsumedInput)
-        {
+      if (mConsumedInput)
+      {
           mInputBufRead = 0;
           mConsumedInput = false;
-        }
+      }
 
-        if ( (mInputBufRead != mWinSize) && (mBuffLen != 0) )
-        {
+      if ( (mInputBufRead != mWinSize) && (mBuffLen != 0) )
+      {
           int bytesRead = mWinSize - mInputBufRead;
           if ( bytesRead < 0 ) bytesRead = 0;
 
@@ -144,7 +130,6 @@ bool XdeltaOp::loadSecondaryFile()
           }
 
           if ( (mInputBufRead != mWinSize) || (mBuffLen == 0) ) return false;
-        }
       }
 
       if (mInputBufRead < (int) mWinSize)

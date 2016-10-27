@@ -14,6 +14,7 @@ public:
 protected:
   static v8::Handle<v8::Value> New(const v8::Arguments& args);
   static v8::Handle<v8::Value> DiffChunked(const v8::Arguments& args);
+  bool loadSecondaryFile() /* overrride */;
 
   XdeltaDiff(int s, int d, v8::Local<v8::Object> cfg);
   unsigned int mBuffMemSize;

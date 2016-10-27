@@ -38,8 +38,8 @@ protected:
   static int GetInt32CfgValue(v8::Local<v8::Object> cfg, const char* str, int def);
   void StartAsync(v8::Handle<v8::Function> fn);
   virtual void FinishAsync();
-  bool loadSourceFile();
-  bool loadSecondaryFile();
+  virtual bool loadSourceFile();
+  virtual bool loadSecondaryFile();
 
   static void Work_pool(uv_work_t* req);
   static void Work_done(uv_work_t* req, int );

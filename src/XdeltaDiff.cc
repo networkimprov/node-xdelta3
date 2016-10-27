@@ -100,3 +100,26 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args)
     
   return args.This();
 }
+
+bool XdeltaDiff::loadSecondaryFile()
+{
+    mInputBufRead = mReader.read(mDst, mInputBuf, mWinSize, mFileOffset);
+    mFileOffset += mWinSize;
+
+    if (mInputBufRead < 0)
+    {
+        mErrType = eErrUv;
+        mUvErr = mReader.readError();
+        return false;
+    }
+
+    if (mInputBufRead < (int) mWinSize)
+    {
+      xd3_set_flags(&mStream, XD3_FLUSH | mStream.flags);
+    }
+
+    xd3_avail_input(&mStream, (const uint8_t*) mInputBuf, mInputBufRead);
+    mConsumedInput = true;
+
+    return true;
+}
