@@ -4,6 +4,7 @@
 #include <v8.h>
 #include <node.h>
 #include "FileReader.h"
+#include "FileWriter.h"
 #include <string>
 
 extern "C" {
@@ -37,7 +38,6 @@ protected:
   static int GetInt32CfgValue(v8::Local<v8::Object> cfg, const char* str, int def);
   void StartAsync(v8::Handle<v8::Function> fn);
   virtual void FinishAsync();
-  int Write(int fd, void* buf, size_t size, size_t offset);
   bool loadSourceFile();
   bool loadSecondaryFile();
 
@@ -53,6 +53,7 @@ protected:
   v8::Persistent<v8::Function> mCallback;
   int mWinSize;
   FileReader mReader;
+  FileWriter mWriter;
   bool mBusy;
   OperationState mState;
   unsigned int mBuffMaxSize;

@@ -84,18 +84,6 @@ void XdeltaOp::FinishAsync()
     mCallback.Dispose();
 }
 
-int XdeltaOp::Write(int fd, void* buf, size_t size, size_t offset) 
-{ 
-    uv_fs_t aUvReq;
-    int aBytesWrote = uv_fs_write(uv_default_loop(), &aUvReq, fd, buf, size, offset, NULL);
-    if (aBytesWrote != (int) size) 
-    {
-      mErrType = eErrUv;
-      mUvErr = uv_last_error(uv_default_loop());
-    }
-    return aBytesWrote - size;
-}
-
 bool XdeltaOp::loadSourceFile()
 {
     int aBytesRead = mReader.read(mSrc, 
@@ -214,10 +202,13 @@ void XdeltaOp::Pool()
       } 
       else 
       {
-        if (Write(mDst, mStream.next_out, (int)mStream.avail_out, mFileOffset) < 0)
+        if ( !mWriter.write(mDst, mStream.next_out, (int)mStream.avail_out, mFileOffset) )
         {
+          mErrType = eErrUv;
+          mUvErr = mWriter.writeError();
           return;
         }
+
         mFileOffset += (int)mStream.avail_out;
       }
       xd3_consume_output(&mStream);
