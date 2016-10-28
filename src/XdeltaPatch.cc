@@ -13,50 +13,63 @@ XdeltaPatch::XdeltaPatch(int s, int d, Local<Object> cfg) :
 XdeltaPatch::~XdeltaPatch()
 {}
 
-void XdeltaPatch::Init(Handle<Object> target)
+void XdeltaPatch::Init(Handle<Object> exports)
 {
-  HandleScope scope;
+  Isolate* isolate = exports->GetIsolate();
+  HandleScope scope(isolate);
 
-  Local<FunctionTemplate> t = FunctionTemplate::New(New);
+  Local<FunctionTemplate> t = FunctionTemplate::New(isolate, New);
+  t->InstanceTemplate()->SetInternalFieldCount(1);
+  t->SetClassName(String::NewFromUtf8(isolate,"XdeltaPatch", String::kInternalizedString));
+  constructor_template.Reset(isolate,t);
 
-  constructor_template = Persistent<FunctionTemplate>::New(t);
-  constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  constructor_template->SetClassName(String::NewSymbol("XdeltaPatch"));
+  NODE_SET_PROTOTYPE_METHOD(t, "patchChunked", PatchChunked);
 
-  NODE_SET_PROTOTYPE_METHOD(constructor_template, "patchChunked", PatchChunked);
-
-  target->Set(String::NewSymbol("XdeltaPatch"), constructor_template->GetFunction());
+  exports->Set(String::NewFromUtf8(isolate, "XdeltaPatch", String::kInternalizedString), t->GetFunction());
 }
 
-Handle<Value> XdeltaPatch::New(const Arguments& args)
+void XdeltaPatch::New(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-  HandleScope scope;
+  Isolate* isolate = args.GetIsolate();
+  HandleScope scope(isolate);
 
   if (args.Length() < 3 || !args[0]->IsInt32() || !args[1]->IsInt32() || !args[2]->IsObject())
-    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd, obj)")));
+  {
+    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate,"arguments are (fd, fd, obj)")));
+    return;
+  }
 
   XdeltaPatch* aXD = new XdeltaPatch(args[0]->Uint32Value(), args[1]->Uint32Value(), args[2]->ToObject());
 
   aXD->Wrap(args.This());
 
-  return args.This();
+  args.GetReturnValue().Set( args.This() );
 }
 
-Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args)
+void XdeltaPatch::PatchChunked(const v8::FunctionCallbackInfo<v8::Value>& args)
 {
-  HandleScope scope;
+  Isolate* isolate = args.GetIsolate();
+  HandleScope scope(isolate);
 
   if (args.Length() < 1 || (args.Length() > 1 && !Buffer::HasInstance(args[0])) || !args[args.Length()-1]->IsFunction())
-    return ThrowException(Exception::TypeError(String::New("arguments are ([buffer], function)")));
+  {
+    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate,"arguments are ([buffer], function)")));
+    return;
+  }
 
   XdeltaPatch* aXd = ObjectWrap::Unwrap<XdeltaPatch>(args.This());
 
   if (aXd->mBusy)
-    return ThrowException(Exception::TypeError(String::New("object busy with async op")));
+  {
+    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate,"object busy with async op")));
+    return;
+  }
 
-  if (aXd->mErrType != eErrNone || aXd->mState == eDone) {
+  if (aXd->mErrType != eErrNone || aXd->mState == eDone)
+  {
     aXd->Callback(Local<Function>::Cast(args[args.Length()-1]));
-    return args.This();
+    args.GetReturnValue().Set( args.This() );
+    return;
   }
     
   if (args.Length() == 1) 
@@ -65,27 +78,29 @@ Handle<Value> XdeltaPatch::PatchChunked(const Arguments& args)
   } 
   else 
   {
-    aXd->mBufferObj = Persistent<Object>::New(args[0]->ToObject());
-    
-    int bufferSize = Buffer::Length(aXd->mBufferObj);
+    Local<Object> obj = args[0]->ToObject();
+    aXd->mBufferObj.Reset( isolate, obj );
+
+    int bufferSize = Buffer::Length(obj);
     if ( bufferSize < 0 ) 
     {
       bufferSize = 0;
     }
+
     aXd->mBuffMaxSize = static_cast<unsigned int>( bufferSize );
-    aXd->mBuff = Buffer::Data(aXd->mBufferObj);
+    aXd->mBuff = Buffer::Data(obj);
   }
   aXd->mBuffLen = aXd->mBuffMaxSize;
 
   aXd->StartAsync(Local<Function>::Cast(args[args.Length()-1]));
 
-  return args.This();
+  args.GetReturnValue().Set( args.This() );
 }
 
 void XdeltaPatch::FinishAsync() 
 {
     XdeltaOp::FinishAsync();
-    mBufferObj.Dispose();
+    mBufferObj.Reset();
 }
 
 bool XdeltaPatch::loadSecondaryFile()
@@ -134,5 +149,6 @@ bool XdeltaPatch::generateResult()
 
     mFileOffset += (int)mStream.avail_out;
     xd3_consume_output(&mStream);
+
     return true;
 }

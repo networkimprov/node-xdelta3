@@ -33,6 +33,7 @@ function PatchStream(src, dst, opt) {
   this.patchObj = new xdelta.XdeltaPatch(src, dst, opt || {});
   this.on('finish', function () { 
     var that = this;
+
     that.patchObj.patchChunked(function(err) {
       if (err)
         that.emit('error', err);

@@ -32,21 +32,22 @@ aDelta.on('end', function() {
 
     var aPatch = new lXdelta3.PatchStream(aSrcFd2, aDstFd2);
 
-    for (var N = 0; N < aDiffBufferList.length; N++)
+    for (var N = 0; N < aDiffBufferList.length; N++) {
       aPatch.write(aDiffBufferList[N]);
+    }
+
     aPatch.end();
     aPatch.on('error', function(err) { console.log(err); });
     aPatch.on('close', function() {
-      fs.closeSync(aSrcFd);
-      fs.closeSync(aDstFd);
+      fs.closeSync(aSrcFd2);
+      fs.closeSync(aDstFd2);
+
       if (aBuffer.toString() == fs.readFileSync(path.resolve(__dirname, 'files/txt1result')).toString())
         console.log('OK:   Basic Large Patch');
       else
         console.log('FAIL: Basic Large Patch');
     });
-
   }
-
 });
 
 

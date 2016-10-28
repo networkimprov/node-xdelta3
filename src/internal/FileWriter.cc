@@ -1,7 +1,9 @@
 #include "FileWriter.h"
+#include <uv.h>
 
 ///////////////////////////////////////////////////////////////////////////////
 FileWriter::FileWriter() :
+    m_error(0),
     m_lastNumberOfBytesWrote( 0 )
 {
 
@@ -15,13 +17,23 @@ FileWriter::~FileWriter()
 bool FileWriter::write(int fd, void* buf, size_t size, size_t offset)
 {
   uv_fs_t aUvRequest;
-  int aBytesWrote = uv_fs_write(uv_default_loop(), &aUvRequest, fd, buf, size, offset, NULL);
-  m_lastNumberOfBytesWrote = aBytesWrote - size;
+  m_lastNumberOfBytesWrote = 0;
 
-  if (aBytesWrote != static_cast<int>(size) ) 
+  uv_buf_t uvBuffer;
+  uvBuffer.base = static_cast<char*>(buf);
+  uvBuffer.len = size;
+
+  // @see http://docs.libuv.org/en/v1.x/migration_010_100.html
+  int result = uv_fs_write(uv_default_loop(), &aUvRequest, fd, &uvBuffer, 1, offset, NULL);
+
+  if ( result < 0 )
   {
-    m_error = uv_last_error(uv_default_loop());
-    return false;
+      m_error = result;
+      return false;
+  }
+  else
+  {
+      m_lastNumberOfBytesWrote = result;
   }
  
   return true;
@@ -30,11 +42,18 @@ bool FileWriter::write(int fd, void* buf, size_t size, size_t offset)
 ///////////////////////////////////////////////////////////////////////////////
 const char* FileWriter::writeErrorMessage() const
 {
-    return uv_strerror(m_error);
+    if ( m_error == 0 )
+    {
+        return "Success";
+    }
+    else
+    {
+        return uv_strerror(m_error);
+    }
 }
 
 ///////////////////////////////////////////////////////////////////////////////
-uv_err_t FileWriter::writeError() const
+int FileWriter::writeError() const
 {
     return m_error;
 }

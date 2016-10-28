@@ -3,9 +3,11 @@
 
 #include <v8.h>
 #include <node.h>
+#include <node_object_wrap.h>
 #include "FileReader.h"
 #include "FileWriter.h"
 #include <string>
+#include <uv.h>
 
 extern "C" {
   #include "../../include/xdelta3/xdelta3.h"
@@ -61,7 +63,7 @@ protected:
   char* mBuff;
   unsigned int mBuffLen;
   unsigned int mWroteFromStream;
-  void* mInputBuf;
+  char* mInputBuf;
   int mInputBufRead;
   bool mConsumedInput;
   int mFileOffset;
@@ -69,7 +71,7 @@ protected:
   xd3_config mConfig;
   xd3_source mSource;
   OperationErrorType mErrType;
-  uv_err_t mUvErr;
+  int mUvErr;
   std::string mXdErr;
 };
 

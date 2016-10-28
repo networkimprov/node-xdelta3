@@ -17,51 +17,56 @@ XdeltaDiff::~XdeltaDiff()
     }
 }
 
-void XdeltaDiff::Init(Handle<Object> target) 
+void XdeltaDiff::Init(Handle<Object> exports)
 {
-  HandleScope scope;
+  Isolate* isolate = exports->GetIsolate();
+  HandleScope scope(isolate);
 
-  Local<FunctionTemplate> t = FunctionTemplate::New(New);
+  Local<FunctionTemplate> t = FunctionTemplate::New(isolate, New);
+  t->InstanceTemplate()->SetInternalFieldCount(1);
+  t->SetClassName(String::NewFromUtf8(isolate,"XdeltaDiff", String::kInternalizedString));
+  constructor_template.Reset(isolate,t);
 
-  constructor_template = Persistent<FunctionTemplate>::New(t);
-  constructor_template->InstanceTemplate()->SetInternalFieldCount(1);
-  constructor_template->SetClassName(String::NewSymbol("XdeltaDiff"));
+  NODE_SET_PROTOTYPE_METHOD(t, "diffChunked", DiffChunked);
 
-  NODE_SET_PROTOTYPE_METHOD(constructor_template, "diffChunked", DiffChunked);
-
-  target->Set(String::NewSymbol("XdeltaDiff"), constructor_template->GetFunction());
+  exports->Set(String::NewFromUtf8(isolate, "XdeltaDiff", String::kInternalizedString), t->GetFunction());
 }
 
-Handle<Value> XdeltaDiff::New(const Arguments& args) 
+void XdeltaDiff::New(const FunctionCallbackInfo<Value>& args)
 {
-  HandleScope scope;
+  Isolate* isolate = args.GetIsolate();
+  HandleScope scope(isolate);
 
   if (args.Length() < 3 || !args[0]->IsInt32() || !args[1]->IsInt32() || !args[2]->IsObject())
   {
-    return ThrowException(Exception::TypeError(String::New("arguments are (fd, fd, obj)")));
+    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate,"arguments are (fd, fd, obj)")));
+    return;
   }
 
   XdeltaDiff* aXD = new XdeltaDiff(args[0]->Uint32Value(), args[1]->Uint32Value(), args[2]->ToObject());
 
   aXD->Wrap(args.This());
 
-  return args.This();
+  args.GetReturnValue().Set(args.This());
 }
 
-Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args) 
+void XdeltaDiff::DiffChunked(const FunctionCallbackInfo<Value>& args)
 {
-  HandleScope scope;
+  Isolate* isolate = args.GetIsolate();
+  HandleScope scope(isolate);
 
   if (args.Length() < 2 || !args[0]->IsInt32() || !args[1]->IsFunction())
   {
-    return ThrowException(Exception::TypeError(String::New("arguments are (number, function)")));
+    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate,"arguments are (number, function)")));
+    return;
   }
 
   XdeltaDiff* aXd = ObjectWrap::Unwrap<XdeltaDiff>(args.This());
 
   if (aXd->mBusy)
   {
-    return ThrowException(Exception::TypeError(String::New("object busy with async op")));
+    isolate->ThrowException(Exception::TypeError(String::NewFromUtf8(isolate,"object busy with async op")));
+    return;
   }
 
   aXd->mBuffMaxSize = args[0]->Uint32Value();
@@ -97,8 +102,8 @@ Handle<Value> XdeltaDiff::DiffChunked(const Arguments& args)
   {
     aXd->StartAsync(Local<Function>::Cast(args[1]));
   }
-    
-  return args.This();
+
+  args.GetReturnValue().Set(args.This());
 }
 
 void XdeltaDiff::Pool()
@@ -116,7 +121,7 @@ bool XdeltaDiff::loadSecondaryFile()
     mInputBufRead = mReader.read(mDst, mInputBuf, mWinSize, mFileOffset);
     mFileOffset += mWinSize;
 
-    if (mInputBufRead < 0)
+    if (mReader.isError())
     {
         mErrType = eErrUv;
         mUvErr = mReader.readError();
@@ -128,7 +133,7 @@ bool XdeltaDiff::loadSecondaryFile()
       xd3_set_flags(&mStream, XD3_FLUSH | mStream.flags);
     }
 
-    xd3_avail_input(&mStream, (const uint8_t*) mInputBuf, mInputBufRead);
+    xd3_avail_input(&mStream, reinterpret_cast<const uint8_t*>( mInputBuf ), mInputBufRead);
     mConsumedInput = true;
 
     return true;
@@ -138,6 +143,7 @@ bool XdeltaDiff::generateResult()
 {
   unsigned int availableSpace = mBuffMaxSize - mBuffLen;
   int aWriteSize = (mStream.avail_out > availableSpace ) ? availableSpace : mStream.avail_out;
+
   memcpy(mBuff + mBuffLen, mStream.next_out, aWriteSize);
   mBuffLen += aWriteSize;
   mWroteFromStream = aWriteSize;

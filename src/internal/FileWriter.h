@@ -1,7 +1,7 @@
 #ifndef FILEWRITER_H_INCLUDE
 #define FILEWRITER_H_INCLUDE
 
-#include <uv.h>
+#include <cstddef> //For size_t
 
 /**
  * The FileWriter class represents an operation which can write to a file.
@@ -18,11 +18,11 @@ public:
      */
     bool write(int fd, void* buf, size_t size, size_t offset);
     const char* writeErrorMessage() const;
-    uv_err_t writeError() const;
+    int writeError() const;
     int lastNumberOfBytesWrote() const;
 
 private:
-    uv_err_t m_error;
+    int m_error;
     int m_lastNumberOfBytesWrote;
  };
  #endif //FILEWRITER_H_INCLUDE

@@ -18,8 +18,8 @@ XdeltaOp::XdeltaOp(int s, int d, Local<Object> cfg, OpType op) :
 
     SetCfg(cfg);
 
-    mSource.curblk = (const uint8_t*) new char[mSource.blksize];
-    mInputBuf = (void*) new char[mSource.blksize];
+    mSource.curblk = reinterpret_cast<const uint8_t*>( new char[mSource.blksize] );
+    mInputBuf = new char[mSource.blksize];
 
     xd3_config_stream(&mStream, &mConfig);
     mState = eStart;
@@ -32,8 +32,8 @@ XdeltaOp::XdeltaOp(int s, int d, Local<Object> cfg, OpType op) :
 
 XdeltaOp::~XdeltaOp() 
 {
-    delete[] (char*)mSource.curblk;
-    delete[] (char*)mInputBuf;
+    delete[] mSource.curblk;
+    delete[] mInputBuf;
     xd3_close_stream(&mStream);
     xd3_free_stream(&mStream);
 }
@@ -56,7 +56,9 @@ int XdeltaOp::GetInt32CfgValue(Local<Object> cfg, const char* str, int def)
 {
     Local<String> aKey;
     Local<Value> aVal;
-    if (cfg->Has(aKey = String::New(str))) 
+    Isolate* isolate = Isolate::GetCurrent();
+
+    if ( cfg->Has( aKey = String::NewFromUtf8(isolate, str) ) )
     {
       aVal = cfg->Get(aKey);
       if (aVal->IsInt32())
@@ -69,7 +71,8 @@ int XdeltaOp::GetInt32CfgValue(Local<Object> cfg, const char* str, int def)
 
 void XdeltaOp::StartAsync(Handle<Function> fn) 
 {
-    mCallback = Persistent<Function>::New(fn);
+    Isolate* isolate = Isolate::GetCurrent();
+    mCallback.Reset(isolate, fn);
     mBusy = true;
     this->Ref();
     uv_work_t* aReq = new uv_work_t;
@@ -81,17 +84,17 @@ void XdeltaOp::FinishAsync()
 {
     this->Unref();
     mBusy = false;
-    mCallback.Dispose();
+    mCallback.Reset();
 }
 
 bool XdeltaOp::loadSourceFile()
 {
     int aBytesRead = mReader.read(mSrc, 
-                                  const_cast<void*>( static_cast<const void*>( mSource.curblk ) ),
+                                  reinterpret_cast<const char*>( mSource.curblk ),
                                   mSource.blksize, 
                                   ( mSource.blksize * mSource.getblkno ));
 
-    if (aBytesRead < 0) 
+    if (mReader.isError())
     {
       mErrType = eErrUv;
       mUvErr = mReader.readError();
@@ -119,6 +122,7 @@ void XdeltaOp::Pool()
     case XD3_GETSRCBLK: 
     {
       if ( !loadSourceFile() ) return;
+
       if (mState == eStart) 
       {
         aAct = XD3_INPUT;
@@ -149,8 +153,8 @@ void XdeltaOp::Pool()
       mXdErr = mStream.msg;
       return;
     }
-
     aAct = mOpType == eOpDiff ? xd3_encode_input(&mStream) : xd3_decode_input(&mStream);
+
   } while (mInputBufRead == mWinSize || aAct != XD3_INPUT || mState == eStart);
 
   mState = eDone;
@@ -158,40 +162,43 @@ void XdeltaOp::Pool()
 
 void XdeltaOp::Done() 
 {
-  HandleScope scope;
+  Isolate* isolate = Isolate::GetCurrent();
+  HandleScope scope(isolate);
 
-  Local<Function> aCallback(Local<Function>::New(mCallback));
-
+  Local<Function> aCallback(Local<Function>::New(isolate,mCallback));
   FinishAsync();
-
   Callback(aCallback);
 }
 
 void XdeltaOp::Callback(Handle<Function> callback) 
 {
+  Isolate* isolate = callback->GetIsolate();
   Handle<Value> aArgv[2];
   int aArgc = 0;
 
   if (mErrType != eErrNone) 
   {
-    aArgv[aArgc++] = String::New(mErrType == eErrUv ? uv_strerror(mUvErr) : mXdErr.c_str());
+    aArgv[aArgc++] = String::NewFromUtf8(isolate, ( mErrType == eErrUv ? uv_strerror(mUvErr) : mXdErr.c_str() ) );
   } 
   else if ( (mState == eDone) && (mBuffLen == 0) ) 
   {
-    aArgv[aArgc++] = Undefined();
-    aArgv[aArgc++] = Null();
+    aArgv[aArgc++] = Undefined(isolate);
+    aArgv[aArgc++] = Null(isolate);
   } 
   else 
   {
-    aArgv[aArgc++] = Undefined();
-    aArgv[aArgc++] = Buffer::New(mBuff, mBuffLen)->handle_;
+    aArgv[aArgc++] = Undefined(isolate);
+    MaybeLocal<Object> b = Buffer::Copy(isolate, mBuff, mBuffLen);
+    aArgv[aArgc++] = b.ToLocalChecked();
   }
 
-  TryCatch try_catch;
-  callback->Call(Context::GetCurrent()->Global(), aArgc, aArgv);
+  TryCatch try_catch(isolate);
+
+  callback->Call(isolate->GetCurrentContext()->Global(), aArgc, aArgv);
+
   if (try_catch.HasCaught())
   {
-    FatalException(try_catch);
+    FatalException(isolate, try_catch);
   }
 }
 
@@ -215,5 +222,6 @@ void XdeltaOp::Work_done(uv_work_t* req, int )
     {
         op->Done();
     }  
+
     delete req; 
 };
