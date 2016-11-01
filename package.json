@@ -1,0 +1,28 @@
+{
+  "name": "node-xdelta3",
+  "version": "2.0.0",
+  "description": "Asynchronous, non-blocking Node.js binding for Xdelta3 binary diff utility.",
+  "main": "xdelta3.js",
+  "directories": {
+    "test": "tests"
+  },
+  "scripts": {
+    "test": "cd tests && node all.js",
+    "install": "node-gyp rebuild"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/bvanderlaan/node-xdelta3.git"
+  },
+  "keywords": [
+    "xdelta3",
+    "diff"
+  ],
+  "author": "networkimprov",
+  "license": "Apache-2.0",
+  "gypfile": true,
+  "bugs": {
+    "url": "https://github.com/bvanderlaan/node-xdelta3/issues"
+  },
+  "homepage": "https://github.com/bvanderlaan/node-xdelta3#readme"
+}

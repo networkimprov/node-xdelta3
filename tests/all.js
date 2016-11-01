@@ -34,7 +34,7 @@ function run(iCommand, iErrValue, iCallback) {
     if (aArg[aArg.length-1] === '')
       aArg.pop();
     var aCmd = aArg.shift();
-    var aC = nChild.spawn(aCmd, aArg, {customFds:[0,1,2], env:process.env});
+    var aC = nChild.spawn(aCmd, aArg, {stdio: 'inherit', env:process.env});
     aC.on('exit', function(code) {
       if (code) return iCallback(iErrValue);
       fRun(++aN);
